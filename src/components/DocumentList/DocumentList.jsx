@@ -26,13 +26,16 @@ export default function DocumentList() {
     setSelectedIds,
     deleteDocuments,
     toggleStar,
-    searchQuery
+    searchQuery,
+    loadData,
+    showNotification
   } = useApp()
   
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const [showDeleteModal, setShowDeleteModal] = useState(false)
   const [selectAll, setSelectAll] = useState(false)
+  const [isRefreshing, setIsRefreshing] = useState(false)
 
   // 从 URL 参数初始化分类过滤
   React.useEffect(() => {
@@ -110,6 +113,24 @@ export default function DocumentList() {
           </p>
         </div>
         <div className="document-list-actions">
+          <button
+            className="btn btn-ghost btn-sm"
+            onClick={async () => {
+              setIsRefreshing(true)
+              try {
+                await loadData()
+                showNotification('success', '文档列表已刷新')
+              } catch (e) {
+                showNotification('error', '刷新失败: ' + e.message)
+              } finally {
+                setIsRefreshing(false)
+              }
+            }}
+            disabled={isRefreshing}
+            title="从数据库重新加载文档列表，同步后台 AI 分析结果"
+          >
+            {isRefreshing ? '⏳ 刷新中...' : '🔄 刷新'}
+          </button>
           {selectedIds.length > 0 && (
             <button className="btn btn-danger btn-sm" onClick={handleBatchDelete}>
               🗑️ 删除 {selectedIds.length} 个
