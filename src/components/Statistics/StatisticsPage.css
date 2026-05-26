@@ -1,0 +1,227 @@
+/* ============================================
+   统计分析样式
+   ============================================ */
+
+.statistics-page {
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.statistics-header {
+  margin-bottom: var(--space-xl);
+}
+
+.statistics-title {
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: var(--space-xs);
+}
+
+.statistics-subtitle {
+  color: var(--text-tertiary);
+  font-size: 0.875rem;
+}
+
+/* 概览卡片 */
+.statistics-overview {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: var(--space-md);
+  margin-bottom: var(--space-xl);
+}
+
+.statistics-overview-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-lg);
+  padding: var(--space-md);
+  text-align: center;
+}
+
+.statistics-overview-icon {
+  display: inline-flex;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-md);
+  align-items: center;
+  justify-content: center;
+  font-size: 1.25rem;
+  margin-bottom: var(--space-sm);
+}
+
+.statistics-overview-info {
+  display: flex;
+  flex-direction: column;
+}
+
+.statistics-overview-value {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.statistics-overview-label {
+  font-size: 0.6875rem;
+  color: var(--text-tertiary);
+  margin-top: 2px;
+}
+
+/* 内容网格 */
+.statistics-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-lg);
+}
+
+.statistics-timeline-card {
+  grid-column: 1 / -1;
+}
+
+/* 柱状图 */
+.statistics-chart {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+}
+
+.statistics-bar-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.statistics-bar-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.statistics-bar-icon {
+  font-size: 1rem;
+  flex-shrink: 0;
+}
+
+.statistics-bar-label {
+  flex: 1;
+  font-size: 0.875rem;
+  color: var(--text-primary);
+}
+
+.statistics-bar-value {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.statistics-bar-percent {
+  font-size: 0.75rem;
+  color: var(--text-tertiary);
+  min-width: 45px;
+  text-align: right;
+}
+
+/* 时间线 */
+.statistics-timeline {
+  position: relative;
+  padding-left: 24px;
+}
+
+.statistics-timeline::before {
+  content: '';
+  position: absolute;
+  left: 8px;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--border-primary);
+}
+
+.statistics-timeline-item {
+  position: relative;
+  padding-bottom: var(--space-md);
+}
+
+.statistics-timeline-item:last-child {
+  padding-bottom: 0;
+}
+
+.statistics-timeline-dot {
+  position: absolute;
+  left: -20px;
+  top: 4px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--primary);
+  border: 2px solid var(--bg-card);
+}
+
+.statistics-timeline-content {
+  display: flex;
+  flex-direction: column;
+}
+
+.statistics-timeline-title {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.statistics-timeline-meta {
+  font-size: 0.75rem;
+  color: var(--text-tertiary);
+  margin-top: 2px;
+}
+
+/* 数据摘要 */
+.statistics-summary {
+  display: flex;
+  flex-direction: column;
+}
+
+.statistics-summary-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border-primary);
+}
+
+.statistics-summary-item:last-child {
+  border-bottom: none;
+}
+
+.statistics-summary-label {
+  font-size: 0.875rem;
+  color: var(--text-tertiary);
+}
+
+.statistics-summary-value {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+/* 响应式 */
+@media (max-width: 1024px) {
+  .statistics-overview {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+@media (max-width: 768px) {
+  .statistics-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .statistics-overview {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 480px) {
+  .statistics-overview {
+    grid-template-columns: 1fr;
+  }
+}
