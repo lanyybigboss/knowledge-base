@@ -187,20 +187,21 @@ function _tryJsonRepair(text) {
  * @returns {Promise<object>} 分析结果（JSON 对象）
  */
 async function analyzeDocumentOllama(systemPrompt, userPrompt) {
-  const prompt = `${systemPrompt}\n\n${userPrompt}\n\n请严格返回 JSON 格式，不要包含其他文字。`
-
   const controller = new AbortController()
   const timeoutId = setTimeout(() => controller.abort(), 120000)
 
   try {
-    logger.info(`[AI] request_start | model=Ollama(${OLLAMA_MODEL}) | promptLength=${prompt.length}`)
+    logger.info(`[AI] request_start | model=Ollama(${OLLAMA_MODEL}) | promptLength=${userPrompt.length}`)
 
-    const response = await fetch(`${OLLAMA_BASE_URL}/api/generate`, {
+    const response = await fetch(`${OLLAMA_BASE_URL}/api/chat`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         model: OLLAMA_MODEL,
-        prompt: prompt,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt + '\n\n请严格返回 JSON 格式，不要包含其他文字。' }
+        ],
         stream: false
       }),
       signal: controller.signal
@@ -211,7 +212,7 @@ async function analyzeDocumentOllama(systemPrompt, userPrompt) {
     }
 
     const data = await response.json()
-    const text = data.response || ''
+    const text = data.message?.content || ''
 
     // [raw_response] 完整输出 Ollama 原始响应
     logger.info(`[AI] raw_response | model=Ollama | textLength=${text.length} | text="${text}"`)
