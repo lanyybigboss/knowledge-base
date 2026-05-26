@@ -530,6 +530,8 @@ export function AppProvider({ children }) {
       const newDoc = await storageService.addDocument(docData)
       dispatch({ type: ACTIONS.ADD_DOCUMENT, payload: newDoc })
       syncService.markDirty()
+      // 唤醒后台 AI 分析服务（若处于待机）
+      backgroundAnalysisService.wakeUp()
       logger.info(`文档已添加: "${newDoc.title}"`, { id: newDoc.id, category: newDoc.category, docNumber: newDoc.docNumber })
       showNotification('success', `文档 "${newDoc.title}" 已添加`)
       return newDoc
@@ -701,6 +703,8 @@ export function AppProvider({ children }) {
       const result = await storageService.importData(data)
       if (result.success) {
         await loadData()
+        // 唤醒后台 AI 分析服务（若处于待机）
+        backgroundAnalysisService.wakeUp()
         showNotification('success', result.message)
       } else {
         showNotification('error', result.message)

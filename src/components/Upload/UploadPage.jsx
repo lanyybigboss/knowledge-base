@@ -9,7 +9,7 @@ import { useDropzone } from 'react-dropzone'
 import { useApp } from '../../services/AppContext'
 import { formatFileSize, getFileTypeInfo, getFileExtension } from '../../utils/helpers'
 import { PRESET_CATEGORIES, MAX_FILE_SIZE } from '../../utils/constants'
-import { analyzeDocuments, hasApiKey, isOllamaAvailable } from '../../services/aiService'
+import { analyzeDocuments, hasApiKey, isOllamaAvailable, invalidateOllamaHealth } from '../../services/aiService'
 import logger from '../../services/logger'
 import apiService from '../../services/apiService'
 import Modal from '../Common/Modal'
@@ -209,6 +209,8 @@ export default function UploadPage() {
     if (acceptedFiles.length === 0) return
 
     // 检查 AI 是否可用：Ollama 在线 或 DeepSeek Key 已配置，两者至少有一个
+    // 先使缓存失效，确保获取实时状态（避免使用启动时的过期缓存）
+    invalidateOllamaHealth()
     const ollamaReady = await isOllamaAvailable()
     const deepseekReady = hasApiKey()
     if (!ollamaReady && !deepseekReady) {

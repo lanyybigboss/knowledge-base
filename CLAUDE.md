@@ -5,7 +5,7 @@
 - **路由**: React Router v6
 - **本地存储**: Dexie.js (IndexedDB: KnowledgeBaseDB)
 - **桌面端**: Electron (主进程 `electron/main.js`, 预加载 `electron/preload.js`)
-- **AI 服务**: Ollama (qwen2.5:3b) + DeepSeek API 双通道
+- **AI 服务**: Ollama (qwen2.5:7b) + DeepSeek API 双通道
 - **组件库**: 原生 CSS（无第三方 UI 框架）
 - **OCR**: tesseract.js v7, PDF 解析: pdfjs-dist, DOCX: mammoth
 
@@ -37,7 +37,7 @@ if (result._fallback) {
 ```
 
 ### 3. Ollama 双通道策略
-- 优先尝试 Ollama (qwen2.5:3b)，直接调 REST API（不依赖 OpenAI SDK）
+- 优先尝试 Ollama (qwen2.5:7b)，直接调 REST API（不依赖 OpenAI SDK）
 - Ollama 不可用时降级到 DeepSeek API
 - DeepSeek 也不可用时返回 `_fallback: true` 降级结果
 - 健康检查 30 秒 TTL，并发请求去重
