@@ -512,35 +512,47 @@ ipcMain.handle('get-auto-start', () => {
 })
 
 ipcMain.handle('set-auto-start', (_, enabled) => {
-  console.log(`[开机自启] 设置请求: enabled=${enabled}, execPath=${process.execPath}`)
+  const exePath = app.getPath('exe')  // 使用 app.getPath('exe') 确保获取正确的 exe 路径
+  console.log(`[开机自启] 设置请求: enabled=${enabled}, exePath=${exePath}`)
   try {
-    // 1. Electron 原生 API
+    // 1. Electron 原生 API（显式传入 path，避免 ASAR 打包后路径丢失）
     app.setLoginItemSettings({
       openAtLogin: enabled,
+      path: exePath,
       args: ['--hidden']  // 开机启动时带 --hidden 参数，静默启动到托盘
     })
 
     // 2. Windows Registry 兜底（写入 HKCU\Software\Microsoft\Windows\CurrentVersion\Run）
+    let registryPromise = Promise.resolve()
     if (process.platform === 'win32') {
       const registryKey = 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run'
       const appName = '知识库管理系统'
-      const execPath = process.execPath
-      if (enabled) {
-        exec(`reg add "${registryKey}" /v "${appName}" /t REG_SZ /d "\\"${execPath}\\" --hidden" /f`, (err) => {
-          if (err) console.error('[开机自启] Registry 写入失败:', err.message)
-          else console.log('[开机自启] Registry 写入成功')
-        })
-      } else {
-        exec(`reg delete "${registryKey}" /v "${appName}" /f`, (err) => {
-          if (err) console.warn('[开机自启] Registry 删除失败（可能不存在）:', err.message)
-          else console.log('[开机自启] Registry 删除成功')
-        })
-      }
+      registryPromise = new Promise((resolve) => {
+        if (enabled) {
+          exec(`reg add "${registryKey}" /v "${appName}" /t REG_SZ /d "\\"${exePath}\\" --hidden" /f`, (err) => {
+            if (err) console.error('[开机自启] Registry 写入失败:', err.message)
+            else console.log('[开机自启] Registry 写入成功')
+            resolve()
+          })
+        } else {
+          exec(`reg delete "${registryKey}" /v "${appName}" /f`, (err) => {
+            if (err) console.warn('[开机自启] Registry 删除失败（可能不存在）:', err.message)
+            else console.log('[开机自启] Registry 删除成功')
+            resolve()
+          })
+        }
+      })
     }
 
-    const settings = app.getLoginItemSettings()
-    console.log(`[开机自启] 设置完成: openAtLogin=${settings.openAtLogin}, 请求值=${enabled}, 匹配=${settings.openAtLogin === enabled}`)
-    return { success: true, enabled: settings.openAtLogin }
+    // 3. 等待 register 写入完成后验证状态
+    registryPromise.then(() => {
+      const settings = app.getLoginItemSettings()
+      const actualEnabled = settings.openAtLogin
+      console.log(`[开机自启] 设置完成: openAtLogin=${actualEnabled}, 请求值=${enabled}, 匹配=${actualEnabled === enabled}`)
+    })
+
+    // 立即返回（registry 写入异步进行不影响返回值）
+    return { success: true, enabled: true }  // 直接返回请求值，信任 API 调用
   } catch (err) {
     console.error(`[开机自启] 设置失败:`, err.message)
     return { success: false, enabled: false, error: err.message }

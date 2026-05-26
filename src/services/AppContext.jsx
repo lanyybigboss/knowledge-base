@@ -388,8 +388,8 @@ export function AppProvider({ children }) {
         logger.warn(`[Strm 刮削] 文本提取异常: ${extractErr.message}`)
       }
 
-      // 4. AI 分析（DeepSeek）
-      if (content && content.trim().length > 10 && hasApiKey()) {
+      // 4. AI 分析（Ollama 优先，DeepSeek 降级）
+      if (content && content.trim().length > 10) {
         try {
           logger.info(`[Strm 刮削] 调用 DeepSeek AI 分析: ${strmFileName}`)
           aiResult = await analyzeDocument(content, title, strmFileName)
