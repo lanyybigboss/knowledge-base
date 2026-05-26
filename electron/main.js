@@ -507,18 +507,37 @@ ipcMain.handle('read-raw-file', (_, filePath) => {
 // ===== 开机自启动 IPC =====
 ipcMain.handle('get-auto-start', () => {
   const settings = app.getLoginItemSettings()
-  console.log(`[开机自启] 读取状态: openAtLogin=${settings.openAtLogin}, execPath=${settings.executableWillLaunchAtLogin}`)
+  console.log(`[开机自启] 读取状态: openAtLogin=${settings.openAtLogin}, execPath=${process.execPath}`)
   return { enabled: settings.openAtLogin, silentStart: true }
 })
 
 ipcMain.handle('set-auto-start', (_, enabled) => {
-  console.log(`[开机自启] 设置请求: enabled=${enabled}`)
+  console.log(`[开机自启] 设置请求: enabled=${enabled}, execPath=${process.execPath}`)
   try {
+    // 1. Electron 原生 API
     app.setLoginItemSettings({
       openAtLogin: enabled,
-      path: process.execPath,
       args: ['--hidden']  // 开机启动时带 --hidden 参数，静默启动到托盘
     })
+
+    // 2. Windows Registry 兜底（写入 HKCU\Software\Microsoft\Windows\CurrentVersion\Run）
+    if (process.platform === 'win32') {
+      const registryKey = 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run'
+      const appName = '知识库管理系统'
+      const execPath = process.execPath
+      if (enabled) {
+        exec(`reg add "${registryKey}" /v "${appName}" /t REG_SZ /d "\\"${execPath}\\" --hidden" /f`, (err) => {
+          if (err) console.error('[开机自启] Registry 写入失败:', err.message)
+          else console.log('[开机自启] Registry 写入成功')
+        })
+      } else {
+        exec(`reg delete "${registryKey}" /v "${appName}" /f`, (err) => {
+          if (err) console.warn('[开机自启] Registry 删除失败（可能不存在）:', err.message)
+          else console.log('[开机自启] Registry 删除成功')
+        })
+      }
+    }
+
     const settings = app.getLoginItemSettings()
     console.log(`[开机自启] 设置完成: openAtLogin=${settings.openAtLogin}, 请求值=${enabled}, 匹配=${settings.openAtLogin === enabled}`)
     return { success: true, enabled: settings.openAtLogin }
@@ -719,8 +738,8 @@ app.whenReady().then(() => {
   createTray()
 
   // 初始化开机自启动设置（保持上次的用户选择）
-  const loginSettings = app.getLoginItemSettings({ path: process.execPath, args: ['--hidden'] })
-  console.log(`[开机自启] 当前状态: openAtLogin=${loginSettings.openAtLogin}`)
+  const loginSettings = app.getLoginItemSettings()
+  console.log(`[开机自启] 当前状态: openAtLogin=${loginSettings.openAtLogin} | execPath=${process.execPath}`)
 
   // 自动启动文件夹监控（多文件夹）
   const savedState = loadWatcherState()
