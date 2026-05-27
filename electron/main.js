@@ -552,7 +552,7 @@ ipcMain.handle('set-auto-start', (_, enabled) => {
     })
 
     // 立即返回（registry 写入异步进行不影响返回值）
-    return { success: true, enabled: true }  // 直接返回请求值，信任 API 调用
+    return { success: true, enabled: enabled }  // 返回实际请求值
   } catch (err) {
     console.error(`[开机自启] 设置失败:`, err.message)
     return { success: false, enabled: false, error: err.message }

@@ -217,8 +217,19 @@ async function analyzeDocumentOllama(systemPrompt, userPrompt) {
     // [raw_response] 完整输出 Ollama 原始响应
     logger.info(`[AI] raw_response | model=Ollama | textLength=${text.length} | text="${text}"`)
 
-    // 解析 Ollama 返回的 JSON
-    let cleaned = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim()
+    // 解析 Ollama 返回的 JSON（优先从 ```json ... ``` 代码块提取）
+    let cleaned = text
+    const fenceMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/)
+    if (fenceMatch) {
+      cleaned = fenceMatch[1].trim()
+    } else {
+      // 降级：提取第一个 { 到最后一个 } 之间的内容
+      const startIdx = text.indexOf('{')
+      const endIdx = text.lastIndexOf('}')
+      if (startIdx !== -1 && endIdx !== -1 && endIdx > startIdx) {
+        cleaned = text.substring(startIdx, endIdx + 1).trim()
+      }
+    }
     logger.info(`[AI] json_extracted | model=Ollama | cleanedLength=${cleaned.length} | text="${cleaned.substring(0, 200)}"`)
 
     // 尝试 JSON 修复（尾随逗号等）
