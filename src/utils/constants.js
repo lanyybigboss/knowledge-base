@@ -90,6 +90,14 @@ export const SUPPORTED_FILE_TYPES = [
 // 最大文件大小 (50MB)
 export const MAX_FILE_SIZE = 50 * 1024 * 1024
 
+// 实体类型配色（知识图谱）
+export const ENTITY_COLORS = {
+  people: { color: '#3b82f6', label: '人物', icon: '👤' },
+  organizations: { color: '#10b981', label: '机构', icon: '🏢' },
+  locations: { color: '#f59e0b', label: '地点', icon: '📍' },
+  dates: { color: '#8b5cf6', label: '日期', icon: '📅' }
+}
+
 // ==================== [OBSIDIAN_ENABLED] 取消注释以启用 Obsidian 集成 ====================
 // export const SOURCE_OBSIDIAN = 'obsidian'
 // export const OBSIDIAN_FRONTMATTER_AI_FIELDS = ['ai_summary', 'ai_category', 'ai_tags', 'ai_keywords', 'ai_entities', 'analyzed_at']

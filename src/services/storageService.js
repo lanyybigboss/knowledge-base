@@ -151,6 +151,33 @@ class StorageService {
   }
 
   /**
+   * 获取所有文档的实体数据（轻量级，仅用于知识图谱）
+   * @returns {Promise<Array>} 包含 id, title, entities, createdAt, category 的文档列表
+   */
+  async getDocumentEntities() {
+    try {
+      const docs = await db.documents.toArray()
+      return docs
+        .filter(doc => doc.entities && (
+          (doc.entities.people && doc.entities.people.length > 0) ||
+          (doc.entities.organizations && doc.entities.organizations.length > 0) ||
+          (doc.entities.locations && doc.entities.locations.length > 0) ||
+          (doc.entities.dates && doc.entities.dates.length > 0)
+        ))
+        .map(doc => ({
+          id: doc.id,
+          title: doc.title,
+          entities: doc.entities,
+          createdAt: doc.createdAt,
+          category: doc.category
+        }))
+    } catch (error) {
+      logger.error('获取文档实体数据失败:', error)
+      return []
+    }
+  }
+
+  /**
    * 分页获取文档列表
    * @param {number} page - 页码（从 1 开始）
    * @param {number} pageSize - 每页数量

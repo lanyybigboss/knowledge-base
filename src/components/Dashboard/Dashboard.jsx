@@ -7,6 +7,7 @@ import { useNavigate } from 'react-router-dom'
 import { useApp } from '../../services/AppContext'
 import { formatFileSize, formatDate, getFileTypeInfo } from '../../utils/helpers'
 import { PRESET_CATEGORIES } from '../../utils/constants'
+import KnowledgeGraph from '../KnowledgeGraph/KnowledgeGraph'
 import './Dashboard.css'
 
 export default function Dashboard() {
@@ -94,6 +95,9 @@ export default function Dashboard() {
       </div>
 
       <div className="dashboard-grid">
+        {/* 知识图谱 */}
+        <KnowledgeGraph onNavigate={navigate} />
+
         {/* 分类分布 */}
         <div className="card">
           <div className="card-header">

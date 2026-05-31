@@ -15,14 +15,14 @@ export default function Header({ onToggleSidebar }) {
   const searchRef = useRef(null)
   const navigate = useNavigate()
 
-  const debouncedSearch = debounce((value) => {
+  const debouncedSearchRef = useRef(debounce((value) => {
     setSearch(value)
-  }, 300)
+  }, 300))
 
   const handleSearchChange = (e) => {
     const value = e.target.value
     setLocalSearch(value)
-    debouncedSearch(value)
+    debouncedSearchRef.current(value)
     setShowSearchResults(value.length > 0)
   }
 

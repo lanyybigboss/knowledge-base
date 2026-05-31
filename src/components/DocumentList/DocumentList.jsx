@@ -66,8 +66,8 @@ export default function DocumentList() {
     setShowDeleteModal(true)
   }, [])
 
-  const confirmBatchDelete = useCallback(() => {
-    deleteDocuments(selectedIds)
+  const confirmBatchDelete = useCallback(async () => {
+    await deleteDocuments(selectedIds)
     setShowDeleteModal(false)
     setSelectAll(false)
   }, [selectedIds, deleteDocuments, setSelectAll])

@@ -5,7 +5,8 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { useApp } from '../../services/AppContext'
 import watcherService from '../../services/folderWatcherService'
-import { saveApiKey, hasApiKey, isOllamaAvailable, invalidateOllamaHealth } from '../../services/aiService'
+import { saveApiKey, hasApiKey, isOllamaAvailable } from '../../services/aiService'
+import storageService from '../../services/storageService'
 import Modal from '../Common/Modal'
 import './SettingsPage.css'
 
@@ -199,8 +200,9 @@ export default function SettingsPage() {
     updateNumberingRules(numberForm)
   }
 
-  const handleExportJSON = () => {
-    const data = exportData()
+  const handleExportJSON = async () => {
+    const data = await exportData()
+    if (!data) return
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
@@ -210,8 +212,9 @@ export default function SettingsPage() {
     URL.revokeObjectURL(url)
   }
 
-  const handleExportCSV = () => {
-    const data = exportData()
+  const handleExportCSV = async () => {
+    const data = await exportData()
+    if (!data) return
     const headers = ['标题', '编号', '分类', '文件名', '文件大小', '关键词', '创建时间', '更新时间']
     const rows = data.documents.map(doc => [
       doc.title,
