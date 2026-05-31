@@ -73,7 +73,6 @@ function layoutGraph(nodes, edges, width, height) {
   const positions = new Map()
   const velocities = new Map()
 
-  // 初始化位置（圆形分布）
   nodes.forEach((node, i) => {
     const angle = (2 * Math.PI * i) / nodes.length
     const radius = Math.min(width, height) * 0.3
@@ -88,7 +87,6 @@ function layoutGraph(nodes, edges, width, height) {
     const forces = new Map()
     nodes.forEach(n => forces.set(n.id, { fx: 0, fy: 0 }))
 
-    // 排斥力
     for (let i = 0; i < nodes.length; i++) {
       for (let j = i + 1; j < nodes.length; j++) {
         const a = positions.get(nodes[i].id)
@@ -107,7 +105,6 @@ function layoutGraph(nodes, edges, width, height) {
       }
     }
 
-    // 吸引力（沿边）
     for (const edge of edges) {
       const a = positions.get(edge.source)
       const b = positions.get(edge.target)
@@ -124,14 +121,12 @@ function layoutGraph(nodes, edges, width, height) {
       forces.get(edge.target).fy -= fy
     }
 
-    // 中心引力
     for (const node of nodes) {
       const pos = positions.get(node.id)
       forces.get(node.id).fx += (width / 2 - pos.x) * CENTER_GRAVITY
       forces.get(node.id).fy += (height / 2 - pos.y) * CENTER_GRAVITY
     }
 
-    // 应用力 + 阻尼
     for (const node of nodes) {
       const vel = velocities.get(node.id)
       const force = forces.get(node.id)
@@ -140,7 +135,6 @@ function layoutGraph(nodes, edges, width, height) {
       const pos = positions.get(node.id)
       pos.x += vel.vx
       pos.y += vel.vy
-      // 边界约束
       const margin = 30
       pos.x = Math.max(margin, Math.min(width - margin, pos.x))
       pos.y = Math.max(margin, Math.min(height - margin, pos.y))
@@ -158,20 +152,20 @@ export default function KnowledgeGraph({ onNavigate }) {
   const [hoveredNode, setHoveredNode] = useState(null)
   const [legend, setLegend] = useState([])
   const graphDataRef = useRef({ nodes: [], edges: [], positions: new Map() })
+  const hoveredNodeRef = useRef(null)
 
+  // 用 ref 读取 hoveredNode，避免 draw 依赖 state 导致无限循环
   const draw = useCallback(() => {
     const canvas = canvasRef.current
     if (!canvas) return
     const ctx = canvas.getContext('2d')
     const { nodes, edges, positions } = graphDataRef.current
     const dpr = window.devicePixelRatio || 1
+    const hovered = hoveredNodeRef.current
 
     ctx.clearRect(0, 0, canvas.width, canvas.height)
     ctx.save()
     ctx.scale(dpr, dpr)
-
-    const w = canvas.width / dpr
-    const h = canvas.height / dpr
 
     // 画边
     for (const edge of edges) {
@@ -181,8 +175,8 @@ export default function KnowledgeGraph({ onNavigate }) {
       ctx.beginPath()
       ctx.moveTo(sPos.x, sPos.y)
       ctx.lineTo(tPos.x, tPos.y)
-      ctx.strokeStyle = hoveredNode
-        ? (edge.source === hoveredNode || edge.target === hoveredNode
+      ctx.strokeStyle = hovered
+        ? (edge.source === hovered || edge.target === hovered
           ? 'rgba(255,255,255,0.4)' : 'rgba(255,255,255,0.03)')
         : 'rgba(255,255,255,0.08)'
       ctx.lineWidth = Math.min(edge.weight, 3)
@@ -195,12 +189,11 @@ export default function KnowledgeGraph({ onNavigate }) {
       if (!pos) continue
       const color = ENTITY_COLORS[node.type]?.color || '#6b7280'
       const radius = Math.min(4 + Math.sqrt(node.weight) * 3, 18)
-      const isHovered = node.id === hoveredNode
-      const dimmed = hoveredNode && !isHovered &&
-        !edges.some(e => (e.source === hoveredNode && e.target === node.id) ||
-          (e.target === hoveredNode && e.source === node.id))
+      const isHovered = node.id === hovered
+      const dimmed = hovered && !isHovered &&
+        !edges.some(e => (e.source === hovered && e.target === node.id) ||
+          (e.target === hovered && e.source === node.id))
 
-      // 光晕
       if (isHovered) {
         ctx.beginPath()
         ctx.arc(pos.x, pos.y, radius + 6, 0, Math.PI * 2)
@@ -213,7 +206,6 @@ export default function KnowledgeGraph({ onNavigate }) {
       ctx.fillStyle = dimmed ? color + '33' : color
       ctx.fill()
 
-      // 标签
       if (isHovered || radius > 8) {
         ctx.font = `${isHovered ? 'bold ' : ''}${isHovered ? 13 : 11}px system-ui, sans-serif`
         ctx.fillStyle = dimmed ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.9)'
@@ -223,8 +215,9 @@ export default function KnowledgeGraph({ onNavigate }) {
     }
 
     ctx.restore()
-  }, [hoveredNode])
+  }, []) // 无依赖，通过 ref 读取
 
+  // 数据加载（仅一次）
   useEffect(() => {
     let mounted = true
     const load = async () => {
@@ -238,13 +231,11 @@ export default function KnowledgeGraph({ onNavigate }) {
         }
 
         const { nodes, edges } = buildGraph(docs)
-
         if (nodes.length === 0) {
           setLoading(false)
           return
         }
 
-        // 限制节点数（避免过于密集）
         const sorted = [...nodes].sort((a, b) => b.weight - a.weight)
         const topNodes = sorted.slice(0, 60)
         const topIds = new Set(topNodes.map(n => n.id))
@@ -267,18 +258,14 @@ export default function KnowledgeGraph({ onNavigate }) {
         const positions = layoutGraph(topNodes, filteredEdges, w, h)
         graphDataRef.current = { nodes: topNodes, edges: filteredEdges, positions }
 
-        // 统计
         const docIds = new Set()
         docs.forEach(d => docIds.add(d.id))
         setStats({ nodes: topNodes.length, edges: filteredEdges.length, docs: docIds.size })
 
-        // 图例
         const typeCounts = {}
         topNodes.forEach(n => { typeCounts[n.type] = (typeCounts[n.type] || 0) + 1 })
         setLegend(Object.entries(typeCounts).map(([type, count]) => ({
-          type,
-          count,
-          ...ENTITY_COLORS[type]
+          type, count, ...ENTITY_COLORS[type]
         })))
 
         setLoading(false)
@@ -290,7 +277,13 @@ export default function KnowledgeGraph({ onNavigate }) {
     }
     load()
     return () => { mounted = false }
-  }, [draw])
+  }, [draw]) // draw 引用稳定（无依赖）
+
+  // hoveredNode 变化时同步 ref 并重绘
+  useEffect(() => {
+    hoveredNodeRef.current = hoveredNode
+    draw()
+  }, [hoveredNode, draw])
 
   // 鼠标交互
   const handleMouseMove = useCallback((e) => {
@@ -313,11 +306,11 @@ export default function KnowledgeGraph({ onNavigate }) {
         break
       }
     }
-    if (found !== hoveredNode) {
+    if (found !== hoveredNodeRef.current) {
       setHoveredNode(found)
       canvas.style.cursor = found ? 'pointer' : 'default'
     }
-  }, [hoveredNode])
+  }, [])
 
   const handleClick = useCallback((e) => {
     const canvas = canvasRef.current
@@ -334,7 +327,6 @@ export default function KnowledgeGraph({ onNavigate }) {
       const dx = x - pos.x
       const dy = y - pos.y
       if (dx * dx + dy * dy <= (radius + 4) * (radius + 4)) {
-        // 点击节点 → 跳转到第一个关联文档
         if (node.docs.size > 0 && onNavigate) {
           const docId = node.docs.values().next().value
           onNavigate(`/documents/${docId}`)
@@ -343,9 +335,6 @@ export default function KnowledgeGraph({ onNavigate }) {
       }
     }
   }, [onNavigate])
-
-  // hoveredNode 变化时重绘
-  useEffect(() => { draw() }, [hoveredNode, draw])
 
   // 窗口 resize
   useEffect(() => {
@@ -400,7 +389,7 @@ export default function KnowledgeGraph({ onNavigate }) {
             <canvas
               ref={canvasRef}
               onMouseMove={handleMouseMove}
-              onMouseLeave={() => setHoveredNode(null)}
+              onMouseLeave={() => { hoveredNodeRef.current = null; setHoveredNode(null); draw() }}
               onClick={handleClick}
             />
             {hoveredData && (
