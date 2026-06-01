@@ -1,383 +1,255 @@
 /**
- * 知识图谱组件
- * 基于实体（人物/机构/地点/日期）的力导向关系图
+ * 知识图谱组件 — 简洁版
+ * Canvas 力导向图，展示实体关系
  */
 
-import React, { useRef, useEffect, useState, useCallback } from 'react'
+import React, { useRef, useEffect, useState } from 'react'
 import storageService from '../../services/storageService'
 import { ENTITY_COLORS } from '../../utils/constants'
 import logger from '../../services/logger'
 import './KnowledgeGraph.css'
 
-// 力导向参数
-const REPULSION = 800
-const ATTRACTION = 0.005
+const REPULSION = 600
+const ATTRACTION = 0.004
 const DAMPING = 0.85
-const MIN_DISTANCE = 40
-const CENTER_GRAVITY = 0.01
-const MAX_ITERATIONS = 200
+const MIN_DIST = 50
+const GRAVITY = 0.01
+const ITERATIONS = 150
 
-/**
- * 从文档实体数据构建图谱节点和边
- */
-function buildGraph(documentsWithEntities) {
-  const nodeMap = new Map()
-  const edgeMap = new Map()
-
-  for (const doc of documentsWithEntities) {
-    const docEntities = []
-
+function buildGraph(docs) {
+  const nodes = new Map()
+  const edges = new Map()
+  for (const doc of docs) {
+    const ids = []
     for (const type of ['people', 'organizations', 'locations', 'dates']) {
-      const entities = doc.entities[type] || []
-      for (const name of entities) {
+      for (const name of (doc.entities[type] || [])) {
         if (!name || typeof name !== 'string') continue
         const key = `${type}:${name.trim()}`
-        if (!nodeMap.has(key)) {
-          nodeMap.set(key, {
-            id: key,
-            name: name.trim(),
-            type,
-            docs: new Set(),
-            weight: 0
-          })
-        }
-        const node = nodeMap.get(key)
-        node.docs.add(doc.id)
-        node.weight++
-        docEntities.push(key)
+        if (!nodes.has(key)) nodes.set(key, { id: key, name: name.trim(), type, docs: [], weight: 0 })
+        const n = nodes.get(key)
+        n.docs.push(doc.id)
+        n.weight++
+        ids.push(key)
       }
     }
-
-    // 同一文档中的实体互连
-    for (let i = 0; i < docEntities.length; i++) {
-      for (let j = i + 1; j < docEntities.length; j++) {
-        const edgeKey = [docEntities[i], docEntities[j]].sort().join('|')
-        if (!edgeMap.has(edgeKey)) {
-          edgeMap.set(edgeKey, { source: docEntities[i], target: docEntities[j], weight: 0 })
-        }
-        edgeMap.get(edgeKey).weight++
+    for (let i = 0; i < ids.length; i++) {
+      for (let j = i + 1; j < ids.length; j++) {
+        const k = [ids[i], ids[j]].sort().join('|')
+        if (!edges.has(k)) edges.set(k, { s: ids[i], t: ids[j], w: 0 })
+        edges.get(k).w++
       }
     }
   }
-
-  return {
-    nodes: Array.from(nodeMap.values()),
-    edges: Array.from(edgeMap.values())
-  }
+  return { nodes: [...nodes.values()], edges: [...edges.values()] }
 }
 
-/**
- * 简单力导向布局
- */
-function layoutGraph(nodes, edges, width, height) {
-  const positions = new Map()
-  const velocities = new Map()
-
-  nodes.forEach((node, i) => {
-    const angle = (2 * Math.PI * i) / nodes.length
-    const radius = Math.min(width, height) * 0.3
-    positions.set(node.id, {
-      x: width / 2 + radius * Math.cos(angle),
-      y: height / 2 + radius * Math.sin(angle)
-    })
-    velocities.set(node.id, { vx: 0, vy: 0 })
+function layout(nodes, edges, w, h) {
+  const pos = new Map()
+  nodes.forEach((n, i) => {
+    const a = (2 * Math.PI * i) / nodes.length
+    const r = Math.min(w, h) * 0.3
+    pos.set(n.id, { x: w / 2 + r * Math.cos(a), y: h / 2 + r * Math.sin(a), vx: 0, vy: 0 })
   })
-
-  for (let iter = 0; iter < MAX_ITERATIONS; iter++) {
-    const forces = new Map()
-    nodes.forEach(n => forces.set(n.id, { fx: 0, fy: 0 }))
-
+  for (let iter = 0; iter < ITERATIONS; iter++) {
     for (let i = 0; i < nodes.length; i++) {
       for (let j = i + 1; j < nodes.length; j++) {
-        const a = positions.get(nodes[i].id)
-        const b = positions.get(nodes[j].id)
-        let dx = a.x - b.x
-        let dy = a.y - b.y
-        let dist = Math.sqrt(dx * dx + dy * dy) || 1
-        if (dist < MIN_DISTANCE) dist = MIN_DISTANCE
-        const force = REPULSION / (dist * dist)
-        const fx = (dx / dist) * force
-        const fy = (dy / dist) * force
-        forces.get(nodes[i].id).fx += fx
-        forces.get(nodes[i].id).fy += fy
-        forces.get(nodes[j].id).fx -= fx
-        forces.get(nodes[j].id).fy -= fy
+        const a = pos.get(nodes[i].id), b = pos.get(nodes[j].id)
+        let dx = a.x - b.x, dy = a.y - b.y
+        let d = Math.sqrt(dx * dx + dy * dy) || 1
+        if (d < MIN_DIST) d = MIN_DIST
+        const f = REPULSION / (d * d)
+        a.vx += (dx / d) * f; a.vy += (dy / d) * f
+        b.vx -= (dx / d) * f; b.vy -= (dy / d) * f
       }
     }
-
-    for (const edge of edges) {
-      const a = positions.get(edge.source)
-      const b = positions.get(edge.target)
+    for (const e of edges) {
+      const a = pos.get(e.s), b = pos.get(e.t)
       if (!a || !b) continue
-      const dx = b.x - a.x
-      const dy = b.y - a.y
-      const dist = Math.sqrt(dx * dx + dy * dy) || 1
-      const force = dist * ATTRACTION * edge.weight
-      const fx = (dx / dist) * force
-      const fy = (dy / dist) * force
-      forces.get(edge.source).fx += fx
-      forces.get(edge.source).fy += fy
-      forces.get(edge.target).fx -= fx
-      forces.get(edge.target).fy -= fy
+      const dx = b.x - a.x, dy = b.y - a.y
+      const d = Math.sqrt(dx * dx + dy * dy) || 1
+      const f = d * ATTRACTION * e.w
+      a.vx += (dx / d) * f; a.vy += (dy / d) * f
+      b.vx -= (dx / d) * f; b.vy -= (dy / d) * f
     }
-
-    for (const node of nodes) {
-      const pos = positions.get(node.id)
-      forces.get(node.id).fx += (width / 2 - pos.x) * CENTER_GRAVITY
-      forces.get(node.id).fy += (height / 2 - pos.y) * CENTER_GRAVITY
-    }
-
-    for (const node of nodes) {
-      const vel = velocities.get(node.id)
-      const force = forces.get(node.id)
-      vel.vx = (vel.vx + force.fx) * DAMPING
-      vel.vy = (vel.vy + force.fy) * DAMPING
-      const pos = positions.get(node.id)
-      pos.x += vel.vx
-      pos.y += vel.vy
-      const margin = 30
-      pos.x = Math.max(margin, Math.min(width - margin, pos.x))
-      pos.y = Math.max(margin, Math.min(height - margin, pos.y))
+    for (const n of nodes) {
+      const p = pos.get(n.id)
+      p.vx += (w / 2 - p.x) * GRAVITY
+      p.vy += (h / 2 - p.y) * GRAVITY
+      p.vx *= DAMPING; p.vy *= DAMPING
+      p.x += p.vx; p.y += p.vy
+      p.x = Math.max(30, Math.min(w - 30, p.x))
+      p.y = Math.max(30, Math.min(h - 30, p.y))
     }
   }
+  return pos
+}
 
-  return positions
+function hitTest(x, y, nodes, pos) {
+  for (const n of nodes) {
+    const p = pos.get(n.id)
+    if (!p) continue
+    const r = Math.min(4 + Math.sqrt(n.weight) * 3, 18)
+    if ((x - p.x) ** 2 + (y - p.y) ** 2 <= (r + 4) ** 2) return n
+  }
+  return null
+}
+
+function drawCanvas(ctx, nodes, edges, pos, w, h, hovered) {
+  ctx.clearRect(0, 0, w, h)
+  // edges
+  for (const e of edges) {
+    const a = pos.get(e.s), b = pos.get(e.t)
+    if (!a || !b) continue
+    ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y)
+    ctx.strokeStyle = hovered
+      ? (e.s === hovered || e.t === hovered ? 'rgba(255,255,255,0.4)' : 'rgba(255,255,255,0.03)')
+      : 'rgba(255,255,255,0.08)'
+    ctx.lineWidth = Math.min(e.w, 3); ctx.stroke()
+  }
+  // nodes
+  for (const n of nodes) {
+    const p = pos.get(n.id); if (!p) continue
+    const c = ENTITY_COLORS[n.type]?.color || '#6b7280'
+    const r = Math.min(4 + Math.sqrt(n.weight) * 3, 18)
+    const isH = n.id === hovered
+    const dim = hovered && !isH && !edges.some(e =>
+      (e.s === hovered && e.t === n.id) || (e.t === hovered && e.s === n.id))
+    if (isH) {
+      ctx.beginPath(); ctx.arc(p.x, p.y, r + 6, 0, Math.PI * 2)
+      ctx.fillStyle = c + '33'; ctx.fill()
+    }
+    ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, Math.PI * 2)
+    ctx.fillStyle = dim ? c + '33' : c; ctx.fill()
+    if (isH || r > 8) {
+      ctx.font = `${isH ? 'bold ' : ''}${isH ? 13 : 11}px system-ui,sans-serif`
+      ctx.fillStyle = dim ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.9)'
+      ctx.textAlign = 'center'; ctx.fillText(n.name, p.x, p.y - r - 6)
+    }
+  }
 }
 
 export default function KnowledgeGraph({ onNavigate }) {
   const canvasRef = useRef(null)
-  const containerRef = useRef(null)
-  const [loading, setLoading] = useState(true)
-  const [stats, setStats] = useState({ nodes: 0, edges: 0, docs: 0 })
-  const [hoveredNode, setHoveredNode] = useState(null)
-  const [legend, setLegend] = useState([])
-  const graphDataRef = useRef({ nodes: [], edges: [], positions: new Map() })
-  const hoveredNodeRef = useRef(null)
+  const wrapRef = useRef(null)
+  const [state, setState] = useState({ loading: true, nodes: [], edges: [], pos: new Map(), stats: null, legend: [] })
+  const hoveredRef = useRef(null)
+  const stateRef = useRef(state)
+  stateRef.current = state
 
-  // 用 ref 读取 hoveredNode，避免 draw 依赖 state 导致无限循环
-  const draw = useCallback(() => {
-    const canvas = canvasRef.current
-    if (!canvas) return
-    const ctx = canvas.getContext('2d')
-    const { nodes, edges, positions } = graphDataRef.current
-    const dpr = window.devicePixelRatio || 1
-    const hovered = hoveredNodeRef.current
-
-    ctx.clearRect(0, 0, canvas.width, canvas.height)
-    ctx.save()
-    ctx.scale(dpr, dpr)
-
-    // 画边
-    for (const edge of edges) {
-      const sPos = positions.get(edge.source)
-      const tPos = positions.get(edge.target)
-      if (!sPos || !tPos) continue
-      ctx.beginPath()
-      ctx.moveTo(sPos.x, sPos.y)
-      ctx.lineTo(tPos.x, tPos.y)
-      ctx.strokeStyle = hovered
-        ? (edge.source === hovered || edge.target === hovered
-          ? 'rgba(255,255,255,0.4)' : 'rgba(255,255,255,0.03)')
-        : 'rgba(255,255,255,0.08)'
-      ctx.lineWidth = Math.min(edge.weight, 3)
-      ctx.stroke()
-    }
-
-    // 画节点
-    for (const node of nodes) {
-      const pos = positions.get(node.id)
-      if (!pos) continue
-      const color = ENTITY_COLORS[node.type]?.color || '#6b7280'
-      const radius = Math.min(4 + Math.sqrt(node.weight) * 3, 18)
-      const isHovered = node.id === hovered
-      const dimmed = hovered && !isHovered &&
-        !edges.some(e => (e.source === hovered && e.target === node.id) ||
-          (e.target === hovered && e.source === node.id))
-
-      if (isHovered) {
-        ctx.beginPath()
-        ctx.arc(pos.x, pos.y, radius + 6, 0, Math.PI * 2)
-        ctx.fillStyle = color + '33'
-        ctx.fill()
-      }
-
-      ctx.beginPath()
-      ctx.arc(pos.x, pos.y, radius, 0, Math.PI * 2)
-      ctx.fillStyle = dimmed ? color + '33' : color
-      ctx.fill()
-
-      if (isHovered || radius > 8) {
-        ctx.font = `${isHovered ? 'bold ' : ''}${isHovered ? 13 : 11}px system-ui, sans-serif`
-        ctx.fillStyle = dimmed ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.9)'
-        ctx.textAlign = 'center'
-        ctx.fillText(node.name, pos.x, pos.y - radius - 6)
-      }
-    }
-
-    ctx.restore()
-  }, []) // 无依赖，通过 ref 读取
-
-  // 数据加载（仅一次）
+  // 初始化 — 仅一次
   useEffect(() => {
-    let mounted = true
-    const load = async () => {
+    let alive = true
+    // 安全超时：5 秒后强制结束 loading
+    const safetyTimer = setTimeout(() => {
+      if (alive) setState(s => s.loading ? { ...s, loading: false } : s)
+    }, 5000)
+
+    ;(async () => {
       try {
         const docs = await storageService.getDocumentEntities()
-        if (!mounted) return
-
-        if (docs.length === 0) {
-          setLoading(false)
-          return
-        }
+        if (!alive) return
+        if (!docs.length) { setState({ loading: false, nodes: [], edges: [], pos: new Map(), stats: null, legend: [] }); return }
 
         const { nodes, edges } = buildGraph(docs)
-        if (nodes.length === 0) {
-          setLoading(false)
-          return
-        }
+        if (!nodes.length) { setState({ loading: false, nodes: [], edges: [], pos: new Map(), stats: null, legend: [] }); return }
 
-        const sorted = [...nodes].sort((a, b) => b.weight - a.weight)
-        const topNodes = sorted.slice(0, 60)
-        const topIds = new Set(topNodes.map(n => n.id))
-        const filteredEdges = edges.filter(e => topIds.has(e.source) && topIds.has(e.target))
+        const sorted = [...nodes].sort((a, b) => b.weight - a.weight).slice(0, 50)
+        const ids = new Set(sorted.map(n => n.id))
+        const fe = edges.filter(e => ids.has(e.s) && ids.has(e.t))
 
+        const wrap = wrapRef.current
         const canvas = canvasRef.current
-        const container = containerRef.current
-        if (!canvas || !container) return
-
+        if (!wrap || !canvas) return
         const dpr = window.devicePixelRatio || 1
-        const rect = container.getBoundingClientRect()
-        const w = rect.width
+        const w = wrap.clientWidth || 600
         const h = 360
+        canvas.width = w * dpr; canvas.height = h * dpr
+        canvas.style.width = w + 'px'; canvas.style.height = h + 'px'
 
-        canvas.width = w * dpr
-        canvas.height = h * dpr
-        canvas.style.width = w + 'px'
-        canvas.style.height = h + 'px'
+        const pos = layout(sorted, fe, w, h)
 
-        const positions = layoutGraph(topNodes, filteredEdges, w, h)
-        graphDataRef.current = { nodes: topNodes, edges: filteredEdges, positions }
+        const docIds = new Set(docs.map(d => d.id))
+        const tc = {}
+        sorted.forEach(n => { tc[n.type] = (tc[n.type] || 0) + 1 })
+        const legend = Object.entries(tc).map(([t, c]) => ({ type: t, count: c, ...ENTITY_COLORS[t] }))
 
-        const docIds = new Set()
-        docs.forEach(d => docIds.add(d.id))
-        setStats({ nodes: topNodes.length, edges: filteredEdges.length, docs: docIds.size })
+        const s = { loading: false, nodes: sorted, edges: fe, pos, stats: { nodes: sorted.length, edges: fe.length, docs: docIds.size }, legend }
+        setState(s)
 
-        const typeCounts = {}
-        topNodes.forEach(n => { typeCounts[n.type] = (typeCounts[n.type] || 0) + 1 })
-        setLegend(Object.entries(typeCounts).map(([type, count]) => ({
-          type, count, ...ENTITY_COLORS[type]
-        })))
-
-        setLoading(false)
-        draw()
+        const ctx = canvas.getContext('2d')
+        ctx.save(); ctx.scale(dpr, dpr)
+        drawCanvas(ctx, sorted, fe, pos, w, h, null)
+        ctx.restore()
       } catch (err) {
         logger.error('[KnowledgeGraph] 加载失败:', err)
-        setLoading(false)
+        if (alive) setState({ loading: false, nodes: [], edges: [], pos: new Map(), stats: null, legend: [] })
       }
-    }
-    load()
-    return () => { mounted = false }
-  }, [draw]) // draw 引用稳定（无依赖）
+    })()
 
-  // hoveredNode 变化时同步 ref 并重绘
-  useEffect(() => {
-    hoveredNodeRef.current = hoveredNode
-    draw()
-  }, [hoveredNode, draw])
-
-  // 鼠标交互
-  const handleMouseMove = useCallback((e) => {
-    const canvas = canvasRef.current
-    if (!canvas) return
-    const rect = canvas.getBoundingClientRect()
-    const x = e.clientX - rect.left
-    const y = e.clientY - rect.top
-    const { nodes, positions } = graphDataRef.current
-
-    let found = null
-    for (const node of nodes) {
-      const pos = positions.get(node.id)
-      if (!pos) continue
-      const radius = Math.min(4 + Math.sqrt(node.weight) * 3, 18)
-      const dx = x - pos.x
-      const dy = y - pos.y
-      if (dx * dx + dy * dy <= (radius + 4) * (radius + 4)) {
-        found = node.id
-        break
-      }
-    }
-    if (found !== hoveredNodeRef.current) {
-      setHoveredNode(found)
-      canvas.style.cursor = found ? 'pointer' : 'default'
-    }
+    return () => { alive = false; clearTimeout(safetyTimer) }
   }, [])
 
-  const handleClick = useCallback((e) => {
-    const canvas = canvasRef.current
-    if (!canvas) return
-    const rect = canvas.getBoundingClientRect()
-    const x = e.clientX - rect.left
-    const y = e.clientY - rect.top
-    const { nodes, positions } = graphDataRef.current
+  // hover 重绘
+  const redraw = () => {
+    const canvas = canvasRef.current; if (!canvas) return
+    const { nodes, edges, pos } = stateRef.current
+    const dpr = window.devicePixelRatio || 1
+    const ctx = canvas.getContext('2d')
+    ctx.save(); ctx.scale(dpr, dpr)
+    drawCanvas(ctx, nodes, edges, pos, canvas.width / dpr, canvas.height / dpr, hoveredRef.current)
+    ctx.restore()
+  }
 
-    for (const node of nodes) {
-      const pos = positions.get(node.id)
-      if (!pos) continue
-      const radius = Math.min(4 + Math.sqrt(node.weight) * 3, 18)
-      const dx = x - pos.x
-      const dy = y - pos.y
-      if (dx * dx + dy * dy <= (radius + 4) * (radius + 4)) {
-        if (node.docs.size > 0 && onNavigate) {
-          const docId = node.docs.values().next().value
-          onNavigate(`/documents/${docId}`)
-        }
-        return
-      }
-    }
-  }, [onNavigate])
+  const onMouseMove = (e) => {
+    const canvas = canvasRef.current; if (!canvas) return
+    const r = canvas.getBoundingClientRect()
+    const hit = hitTest(e.clientX - r.left, e.clientY - r.top, stateRef.current.nodes, stateRef.current.pos)
+    const id = hit?.id || null
+    if (id !== hoveredRef.current) { hoveredRef.current = id; canvas.style.cursor = id ? 'pointer' : 'default'; redraw() }
+  }
 
-  // 窗口 resize
+  const onMouseLeave = () => { if (hoveredRef.current) { hoveredRef.current = null; redraw() } }
+
+  const onClick = (e) => {
+    const canvas = canvasRef.current; if (!canvas) return
+    const r = canvas.getBoundingClientRect()
+    const hit = hitTest(e.clientX - r.left, e.clientY - r.top, stateRef.current.nodes, stateRef.current.pos)
+    if (hit?.docs?.length && onNavigate) onNavigate(`/documents/${hit.docs[0]}`)
+  }
+
+  // resize
   useEffect(() => {
-    const handleResize = () => {
-      const canvas = canvasRef.current
-      const container = containerRef.current
-      if (!canvas || !container) return
+    const onResize = () => {
+      const wrap = wrapRef.current, canvas = canvasRef.current
+      if (!wrap || !canvas) return
+      const { nodes, edges, pos } = stateRef.current
+      if (!nodes.length) return
       const dpr = window.devicePixelRatio || 1
-      const rect = container.getBoundingClientRect()
-      const w = rect.width
-      const h = 360
-      canvas.width = w * dpr
-      canvas.height = h * dpr
-      canvas.style.width = w + 'px'
-      canvas.style.height = h + 'px'
-      const { nodes, edges } = graphDataRef.current
-      if (nodes.length > 0) {
-        const positions = layoutGraph(nodes, edges, w, h)
-        graphDataRef.current = { nodes, edges, positions }
-        draw()
-      }
+      const w = wrap.clientWidth, h = 360
+      canvas.width = w * dpr; canvas.height = h * dpr
+      canvas.style.width = w + 'px'; canvas.style.height = h + 'px'
+      const newPos = layout(nodes, edges, w, h)
+      stateRef.current = { ...stateRef.current, pos: newPos }
+      const ctx = canvas.getContext('2d')
+      ctx.save(); ctx.scale(dpr, dpr)
+      drawCanvas(ctx, nodes, edges, newPos, w, h, hoveredRef.current)
+      ctx.restore()
     }
-    window.addEventListener('resize', handleResize)
-    return () => window.removeEventListener('resize', handleResize)
-  }, [draw])
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
 
-  const hoveredData = hoveredNode ? graphDataRef.current.nodes.find(n => n.id === hoveredNode) : null
+  const hoveredData = hoveredRef.current ? state.nodes.find(n => n.id === hoveredRef.current) : null
 
   return (
     <div className="card kg-card">
       <div className="card-header">
         <h3 className="card-title">🧠 知识图谱</h3>
-        {stats.nodes > 0 && (
-          <span className="kg-stats">{stats.nodes} 实体 · {stats.edges} 关联 · {stats.docs} 文档</span>
-        )}
+        {state.stats && <span className="kg-stats">{state.stats.nodes} 实体 · {state.stats.edges} 关联 · {state.stats.docs} 文档</span>}
       </div>
-
-      {loading ? (
-        <div className="kg-loading">
-          <div className="kg-spinner" />
-          <span>构建知识图谱...</span>
-        </div>
-      ) : stats.nodes === 0 ? (
+      {state.loading ? (
+        <div className="kg-loading"><div className="kg-spinner" /><span>构建知识图谱...</span></div>
+      ) : !state.stats ? (
         <div className="empty-state" style={{ padding: '40px 20px' }}>
           <div className="empty-state-icon">🧠</div>
           <div className="empty-state-title">暂无实体数据</div>
@@ -385,25 +257,20 @@ export default function KnowledgeGraph({ onNavigate }) {
         </div>
       ) : (
         <>
-          <div className="kg-canvas-wrapper" ref={containerRef}>
-            <canvas
-              ref={canvasRef}
-              onMouseMove={handleMouseMove}
-              onMouseLeave={() => { hoveredNodeRef.current = null; setHoveredNode(null); draw() }}
-              onClick={handleClick}
-            />
+          <div className="kg-canvas-wrapper" ref={wrapRef}>
+            <canvas ref={canvasRef} onMouseMove={onMouseMove} onMouseLeave={onMouseLeave} onClick={onClick} />
             {hoveredData && (
               <div className="kg-tooltip">
                 <span className="kg-tooltip-type" style={{ color: ENTITY_COLORS[hoveredData.type]?.color }}>
                   {ENTITY_COLORS[hoveredData.type]?.icon} {ENTITY_COLORS[hoveredData.type]?.label}
                 </span>
                 <span className="kg-tooltip-name">{hoveredData.name}</span>
-                <span className="kg-tooltip-meta">出现 {hoveredData.weight} 次 · {hoveredData.docs.size} 篇文档</span>
+                <span className="kg-tooltip-meta">出现 {hoveredData.weight} 次 · {hoveredData.docs.length} 篇文档</span>
               </div>
             )}
           </div>
           <div className="kg-legend">
-            {legend.map(item => (
+            {state.legend.map(item => (
               <div key={item.type} className="kg-legend-item">
                 <span className="kg-legend-dot" style={{ background: item.color }} />
                 <span>{item.icon} {item.label}</span>
