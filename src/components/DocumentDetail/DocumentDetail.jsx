@@ -9,7 +9,7 @@ import { useApp } from '../../services/AppContext'
 import { formatFileSize, formatDate, getFileTypeInfo } from '../../utils/helpers'
 import { PRESET_CATEGORIES } from '../../utils/constants'
 import logger from '../../services/logger'
-import { analyzeDocument, hasApiKey } from '../../services/aiService'
+import { analyzeDocument, hasApiKey, isOllamaAvailable } from '../../services/aiService'
 import apiService from '../../services/apiService'
 import storageService from '../../services/storageService'
 import Modal from '../Common/Modal'
@@ -56,8 +56,9 @@ export default function DocumentDetail() {
    * AI 重新分析文档
    */
   const handleReAnalyze = async () => {
-    if (!hasApiKey()) {
-      showNotification('error', '请先在设置页面配置 DeepSeek API Key')
+    const ollamaReady = await isOllamaAvailable()
+    if (!ollamaReady && !hasApiKey()) {
+      showNotification('error', '请先启动 Ollama 或在设置页面配置 DeepSeek API Key')
       return
     }
 

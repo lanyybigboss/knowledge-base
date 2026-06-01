@@ -82,16 +82,15 @@ async function extractPdfText(file, onProgress) {
  */
 /**
  * tesseract.js v7 在浏览器中会从 CDN 加载 3 个资源：
- * 1. Worker 脚本（importScripts 加载） → 本地文件避免 CDN 问题
+ * 1. Worker 脚本（importScripts 加载） → 使用 jsDelivr CDN
  * 2. Tesseract Core（Wasm，importScripts 加载） → 使用 jsDelivr（默认）
  * 3. 语言数据（fetch 加载） → 使用 jsDelivr（默认）
  *
- * 如果网络环境无法访问 jsDelivr，可修改 corePath/langPath 为国内镜像：
- *   corePath: 'https://unpkg.com/tesseract.js-core@7.0.0'
- *   注意：langPath 不支持简单替换为 unpkg（路径结构不兼容）
+ * 如果网络环境无法访问 jsDelivr，可自行下载 worker.min.js 到 public/ 目录，
+ * 然后将 workerPath 改为 '/tesseract-worker.min.js'
  */
 const TESSERACT_OPTIONS = {
-  workerPath: '/tesseract-worker.min.js'  // 本地 Worker 脚本（public/ 目录）
+  workerPath: 'https://cdn.jsdelivr.net/npm/tesseract.js@7/dist/worker.min.js'
 }
 
 async function ocrPdfPages(pdf, fileName, totalPages, onProgress) {

@@ -239,7 +239,8 @@ async function analyzeDocumentOllama(systemPrompt, userPrompt) {
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userPrompt + '\n\n���ϸ񷵻� JSON ��ʽ����Ҫ�����������֡�' }
         ],
-        stream: false
+        stream: false,
+        format: 'json'
       }),
       signal: controller.signal
     })
@@ -315,7 +316,9 @@ async function analyzeDocumentOllama(systemPrompt, userPrompt) {
 
     try {
       const parseStart = Date.now()
-      const parsed = JSON.parse(cleaned)
+      // 清洗控制字符：Ollama 可能在字符串值中输出未转义的换行/制表符，导致 JSON.parse 崩溃
+      const sanitized = cleaned.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '')
+      const parsed = JSON.parse(sanitized)
       parseTime = Date.now() - parseStart
       
       logger.info(`[AI] parsed_result | model=Ollama | parsed=`, JSON.stringify(parsed, null, 2))

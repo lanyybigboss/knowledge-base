@@ -28,3 +28,10 @@ npm-debug.log*
 
 # MCP 配置（含敏感 token）
 .mcp.json
+
+# VSCode 工作区
+*.code-workspace
+
+# Playwright
+playwright-report/
+test-results/

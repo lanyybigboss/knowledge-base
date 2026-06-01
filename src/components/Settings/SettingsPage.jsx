@@ -7,6 +7,7 @@ import { useApp } from '../../services/AppContext'
 import watcherService from '../../services/folderWatcherService'
 import { saveApiKey, hasApiKey, isOllamaAvailable } from '../../services/aiService'
 import storageService from '../../services/storageService'
+import logger from '../../services/logger'
 import Modal from '../Common/Modal'
 import './SettingsPage.css'
 
@@ -54,19 +55,19 @@ export default function SettingsPage() {
   const [autoStartLoading, setAutoStartLoading] = useState(false)
   useEffect(() => {
     // 检查当前开机自启状态（仅 Electron 环境有效）
-    console.log('[AutoStart] 环境检测:', {
+    logger.info('[AutoStart] 环境检测:', {
       hasElectronAPI: !!window.electronAPI,
       hasGetAutoStart: !!(window.electronAPI && window.electronAPI.getAutoStart)
     })
     if (window.electronAPI && window.electronAPI.getAutoStart) {
       window.electronAPI.getAutoStart().then(res => {
-        console.log('[AutoStart] 获取状态成功:', res)
+        logger.info('[AutoStart] 获取状态成功:', res)
         setAutoStartEnabled(!!res.enabled)
       }).catch(err => {
-        console.error('[AutoStart] 获取状态失败:', err)
+        logger.error('[AutoStart] 获取状态失败:', err)
       })
     } else {
-      console.warn('[AutoStart] window.electronAPI 不可用，当前为非 Electron 环境或 preload 未加载')
+      logger.warn('[AutoStart] window.electronAPI 不可用，当前为非 Electron 环境或 preload 未加载')
     }
   }, [])
 
@@ -275,7 +276,7 @@ export default function SettingsPage() {
   // 切换开机自启
   const handleToggleAutoStart = async () => {
     const hasAPI = !!(window.electronAPI && window.electronAPI.setAutoStart)
-    console.log('[AutoStart] click, electronAPI:', !!window.electronAPI, 'setAutoStart:', hasAPI)
+    logger.info('[AutoStart] click, electronAPI:', !!window.electronAPI, 'setAutoStart:', hasAPI)
     if (!hasAPI) {
       alert('开机自启动功能仅在桌面应用模式下可用')
       return
@@ -283,16 +284,16 @@ export default function SettingsPage() {
     setAutoStartLoading(true)
     try {
       const newState = !autoStartEnabled
-      console.log('[AutoStart] 准备切换:', { current: autoStartEnabled, new: newState })
+      logger.info('[AutoStart] 准备切换:', { current: autoStartEnabled, new: newState })
       const result = await window.electronAPI.setAutoStart(newState)
-      console.log('[AutoStart] 切换结果:', result)
+      logger.info('[AutoStart] 切换结果:', result)
       if (result.success) {
         setAutoStartEnabled(result.enabled)
       } else {
         alert('开机自启设置失败，请检查系统权限或杀毒软件拦截')
       }
     } catch (err) {
-      console.error('[AutoStart] 切换异常:', err)
+      logger.error('[AutoStart] 切换异常:', err)
       alert(`开机自启设置失败：${err.message || '未知错误'}`)
     } finally {
       setAutoStartLoading(false)
@@ -397,7 +398,7 @@ export default function SettingsPage() {
         )
         setFailedCount(failedDocs.length)
       } catch (err) {
-        console.error('[Settings] 检查失败文档数量失败:', err)
+        logger.error('[Settings] 检查失败文档数量失败:', err)
       }
     }
     checkFailedCount()
@@ -419,7 +420,7 @@ export default function SettingsPage() {
         window.electronAPI.triggerScan()
       }
     } catch (err) {
-      console.error('[Settings] 重置失败文档失败:', err)
+      logger.error('[Settings] 重置失败文档失败:', err)
       setResetMsg(`❌ 重置失败：${err.message || '未知错误'}`)
     }
     setResetting(false)
@@ -541,7 +542,7 @@ export default function SettingsPage() {
                       type={showApiKey ? 'text' : 'password'}
                       value={aiApiKey}
                       onChange={e => {
-                        console.log('[API Key] onChange:', e.target.value.length, 'chars')
+                        logger.debug('[API Key] onChange:', e.target.value.length, 'chars')
                         setAiApiKey(e.target.value)
                         setAiSaveMsg('')
                       }}
