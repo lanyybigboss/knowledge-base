@@ -16,9 +16,12 @@ let WATCHER_STATE_FILE
 let SYNC_FILE
 
 function initStorageDirectories() {
+  const isDev = process.argv.includes('--dev')
   STORAGE_DIR = process.env.KB_STORAGE_DIR
     ? path.resolve(process.env.KB_STORAGE_DIR)
-    : path.join(app.getPath('userData'), 'data')
+    : isDev
+      ? path.resolve(__dirname, '..', 'data')
+      : path.join(app.getPath('userData'), 'data')
 
   if (!fs.existsSync(STORAGE_DIR)) {
     fs.mkdirSync(STORAGE_DIR, { recursive: true })
