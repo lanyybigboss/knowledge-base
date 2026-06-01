@@ -7,6 +7,7 @@ import storageService from './storageService'
 import taskQueueService from './taskQueueService'
 import logger from './logger'
 import { analyzeDocument, hasApiKey, isOllamaAvailable } from './aiService'
+import { generateSmartDocNumber } from '../utils/helpers'
 
 /** 扫描间隔（毫秒） */
 const SCAN_INTERVAL = 30000
@@ -121,6 +122,7 @@ class BackgroundAnalysisService {
           tags: result.tags || [],
           entities: result.entities || { people: [], organizations: [], locations: [], dates: [] },
           smartTitle: result.smartTitle || '',
+          docNumber: result.smartTitle ? generateSmartDocNumber(result.smartTitle, doc.createdAt) : doc.docNumber,
           searchIndex: searchIndex,
           aiAnalyzed: true  // ← 最后才设 aiAnalyzed
         })

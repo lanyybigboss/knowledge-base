@@ -45,7 +45,8 @@ export default function SettingsPage() {
     dateFormat: numberingRules.dateFormat || 'YYYYMMDD',
     separator: numberingRules.separator || '-',
     digitCount: numberingRules.digitCount || 4,
-    counter: numberingRules.counter || {}
+    counter: numberingRules.counter || {},
+    enabled: numberingRules.enabled !== false
   })
 
   // 开机自启动状态
@@ -723,62 +724,28 @@ export default function SettingsPage() {
                 文档编号规则
               </h3>
               <p className="settings-description">
-                配置自动生成的文档编号格式。预览：{numberForm.prefix}{numberForm.separator}
-                {new Date().toISOString().slice(0, 10).replace(/-/g, '')}{numberForm.separator}
-                {'1'.padStart(numberForm.digitCount, '0')}
+                AI 分析完成后自动生成智能编号，格式为「智能标题-日期」。
+                例如：<code style={{ background: 'var(--bg-tertiary)', padding: '2px 6px', borderRadius: '4px' }}>深度学习模型部署方案-0531</code>
               </p>
 
               <div className="settings-form">
-                <div className="input-group">
-                  <label>前缀</label>
-                  <input
-                    type="text"
-                    value={numberForm.prefix}
-                    onChange={e => setNumberForm({ ...numberForm, prefix: e.target.value })}
-                    placeholder="例如: DOC, KB, KB-2024"
-                  />
-                </div>
-
-                <div className="input-group">
-                  <label>日期格式</label>
-                  <select
-                    value={numberForm.dateFormat}
-                    onChange={e => setNumberForm({ ...numberForm, dateFormat: e.target.value })}
+                <div className="input-group" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <label style={{ margin: 0 }}>启用智能编号</label>
+                  <button
+                    className={`btn btn-sm ${numberForm.enabled !== false ? 'btn-primary' : 'btn-secondary'}`}
+                    onClick={() => setNumberForm({ ...numberForm, enabled: numberForm.enabled === false })}
                   >
-                    <option value="YYYYMMDD">YYYYMMDD (20260520)</option>
-                    <option value="YYYYMM">YYYYMM (202605)</option>
-                    <option value="YYYY">YYYY (2026)</option>
-                    <option value="none">无日期</option>
-                  </select>
+                    {numberForm.enabled !== false ? '已启用' : '已禁用'}
+                  </button>
                 </div>
 
-                <div className="input-group">
-                  <label>分隔符</label>
-                  <select
-                    value={numberForm.separator}
-                    onChange={e => setNumberForm({ ...numberForm, separator: e.target.value })}
-                  >
-                    <option value="-">- (连字符)</option>
-                    <option value="_">_ (下划线)</option>
-                    <option value="/">/ (斜杠)</option>
-                    <option value="">无分隔符</option>
-                  </select>
+                <div style={{ padding: '12px 16px', background: 'var(--bg-tertiary)', borderRadius: 'var(--radius-md)', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                  <p style={{ margin: '0 0 8px' }}><strong>编号格式：</strong>{'{智能标题}-{MMDD}'}</p>
+                  <p style={{ margin: '0 0 8px' }}>AI 分析文档后，用生成的智能标题 + 上传日期自动编号。</p>
+                  <p style={{ margin: 0 }}>旧格式（DOC-YYYYMMDD-NNNN）的文档不受影响。</p>
                 </div>
 
-                <div className="input-group">
-                  <label>序号位数</label>
-                  <select
-                    value={numberForm.digitCount}
-                    onChange={e => setNumberForm({ ...numberForm, digitCount: Number(e.target.value) })}
-                  >
-                    <option value={3}>3 位 (001)</option>
-                    <option value={4}>4 位 (0001)</option>
-                    <option value={5}>5 位 (00001)</option>
-                    <option value={6}>6 位 (000001)</option>
-                  </select>
-                </div>
-
-                <button className="btn btn-primary" onClick={handleSaveNumbering}>
+                <button className="btn btn-primary" onClick={() => updateNumberingRules({ ...numberForm, enabled: numberForm.enabled !== false })}>
                   💾 保存编号规则
                 </button>
               </div>

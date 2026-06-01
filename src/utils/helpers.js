@@ -110,6 +110,22 @@ export function generateDocumentNumber(categoryId, rules = null, counters = null
 }
 
 /**
+ * 生成基于 smartTitle 的文档编号
+ * 格式：{smartTitle}-{MMDD}
+ * @param {string} smartTitle - AI 生成的智能标题
+ * @param {string} createdAt - 文档创建时间（ISO 字符串）
+ * @returns {string} 编号，如 "深度学习模型部署方案-0531"
+ */
+export function generateSmartDocNumber(smartTitle, createdAt) {
+  if (!smartTitle) return ''
+  const date = createdAt ? new Date(createdAt) : new Date()
+  const mm = String(date.getMonth() + 1).padStart(2, '0')
+  const dd = String(date.getDate()).padStart(2, '0')
+  const clean = smartTitle.replace(/[<>:"/\\|?*\r\n]/g, '').substring(0, 20)
+  return `${clean}-${mm}${dd}`
+}
+
+/**
  * 截断文本
  */
 export function truncateText(text, maxLength = 100) {
