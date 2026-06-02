@@ -34,6 +34,66 @@ class BackgroundAnalysisService {
     this._scanning = false
     /** AI 分析写入成功后回调，由 AppContext 注册，用于触发 UI 刷新 */
     this.onDocumentUpdated = null
+    /** Electron IPC 分析器就绪状态 */
+    this._analyzerReady = false
+  }
+
+  /**
+   * 检查是否在 Electron 环境且 analyzer 子进程可用
+   */
+  _isElectronAnalyzerAvailable() {
+    return !!(window.electronAPI && window.electronAPI.analyzerAnalyze)
+  }
+
+  /**
+   * 通过 Electron IPC 调用 analyzer 子进程分析文档
+   * @returns {Promise<object|null>} 分析结果或 null
+   */
+  _analyzeViaIPC(doc) {
+    return new Promise((resolve) => {
+      const timeout = setTimeout(() => {
+        cleanup()
+        resolve(null)
+      }, ANALYSIS_TIMEOUT)
+
+      let cleanup
+
+      const onResult = (msg) => {
+        if (msg.id !== doc.id) return
+        cleanup()
+        resolve(msg.data || null)
+      }
+
+      const onError = (msg) => {
+        if (msg.id !== doc.id) return
+        cleanup()
+        resolve(null)
+      }
+
+      cleanup = () => {
+        clearTimeout(timeout)
+        window.electronAPI.onAnalyzerResult(onResult)  // 返回 unsubscribe
+        window.electronAPI.onAnalyzerError(onError)
+      }
+
+      // 注册监听（返回 unsubscribe 函数）
+      const unsubResult = window.electronAPI.onAnalyzerResult(onResult)
+      const unsubError = window.electronAPI.onAnalyzerError(onError)
+      cleanup = () => {
+        clearTimeout(timeout)
+        unsubResult()
+        unsubError()
+      }
+
+      // 发送分析请求
+      window.electronAPI.analyzerAnalyze({
+        id: doc.id,
+        filePath: doc.localFilePath,
+        fileName: doc.fileName,
+        fileType: doc.fileType,
+        title: doc.title
+      })
+    })
   }
 
   /**
@@ -62,21 +122,33 @@ class BackgroundAnalysisService {
           return null
         }
 
-        // 调用 AI 分析（带 120 秒超时）
+        // 调用 AI 分析（带超时）
         let result = null
         let timeoutId = null
-        try {
-          const timeoutPromise = new Promise((_, reject) => {
-            timeoutId = setTimeout(() => reject(new Error('AI 分析超时（120 秒）')), ANALYSIS_TIMEOUT)
-          })
-          result = await Promise.race([
-            analyzeDocument(content, title, fileName),
-            timeoutPromise
-          ])
-        } catch (err) {
-          logger.error(`[BackgroundAnalysis] AI 分析异常: "${title || fileName}"`, err.message)
-        } finally {
-          if (timeoutId) clearTimeout(timeoutId)
+
+        if (this._isElectronAnalyzerAvailable() && doc.localFilePath) {
+          // Electron 模式：通过 IPC 调用 analyzer 子进程
+          logger.info(`[BackgroundAnalysis] 使用 IPC 子进程分析: "${title || fileName}"`)
+          try {
+            result = await this._analyzeViaIPC(doc)
+          } catch (err) {
+            logger.error(`[BackgroundAnalysis] IPC 分析异常: "${title || fileName}"`, err.message)
+          }
+        } else {
+          // Vite 模式：直接调用 aiService
+          try {
+            const timeoutPromise = new Promise((_, reject) => {
+              timeoutId = setTimeout(() => reject(new Error('AI 分析超时（120 秒）')), ANALYSIS_TIMEOUT)
+            })
+            result = await Promise.race([
+              analyzeDocument(content, title, fileName),
+              timeoutPromise
+            ])
+          } catch (err) {
+            logger.error(`[BackgroundAnalysis] AI 分析异常: "${title || fileName}"`, err.message)
+          } finally {
+            if (timeoutId) clearTimeout(timeoutId)
+          }
         }
 
         if (!result || result._fallback) {
@@ -218,8 +290,9 @@ class BackgroundAnalysisService {
     try {
       // 检查是否有可用的 AI 服务（Ollama 或 DeepSeek）
       const ollamaAvailable = await isOllamaAvailable()
-      if (!hasApiKey() && !ollamaAvailable) {
-        logger.debug('[BackgroundAnalysis] 无可用 AI 服务（Ollama 不可用 & DeepSeek 未配置），跳过扫描')
+      const analyzerAvailable = this._isElectronAnalyzerAvailable()
+      if (!hasApiKey() && !ollamaAvailable && !analyzerAvailable) {
+        logger.debug('[BackgroundAnalysis] 无可用 AI 服务（Ollama/Analyzer/DeepSeek 均不可用），跳过扫描')
         return
       }
 
