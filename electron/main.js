@@ -6,7 +6,7 @@
 const { app, BrowserWindow, ipcMain, dialog, shell, Menu, Tray, nativeImage } = require('electron')
 const path = require('path')
 const fs = require('fs')
-const { execFile, spawn } = require('child_process')
+const { execFile, spawn, fork } = require('child_process')
 
 // ===== 存储目录配置 =====
 let STORAGE_DIR
@@ -707,6 +707,86 @@ ipcMain.handle('sync-timestamp', () => {
 })
 } // end registerIpcHandlers
 
+// ===== 后台分析子进程管理 =====
+let analyzerProcess = null
+let analyzerReady = false
+
+function startAnalyzer() {
+  const analyzerPath = path.join(__dirname, 'analyzer.js')
+  if (!fs.existsSync(analyzerPath)) {
+    console.warn('[Analyzer] analyzer.js 不存在，跳过子进程启动')
+    return
+  }
+
+  analyzerProcess = fork(analyzerPath, [], { silent: false })
+
+  analyzerProcess.on('message', (msg) => {
+    if (!msg || !msg.type) return
+
+    switch (msg.type) {
+      case 'ready':
+        analyzerReady = true
+        console.log('[Analyzer] 子进程就绪')
+        break
+      case 'progress':
+        // 转发进度到渲染进程
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('analyzer-progress', msg)
+        }
+        break
+      case 'result':
+        // 转发结果到渲染进程
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('analyzer-result', msg)
+        }
+        break
+      case 'error':
+        console.error('[Analyzer] 错误:', msg.error)
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('analyzer-error', msg)
+        }
+        break
+    }
+  })
+
+  analyzerProcess.on('exit', (code) => {
+    console.warn(`[Analyzer] 子进程退出 (code=${code})，3 秒后重启...`)
+    analyzerReady = false
+    analyzerProcess = null
+    setTimeout(startAnalyzer, 3000)
+  })
+
+  analyzerProcess.on('error', (err) => {
+    console.error('[Analyzer] 子进程错误:', err.message)
+  })
+}
+
+function stopAnalyzer() {
+  if (analyzerProcess) {
+    analyzerProcess.send({ type: 'exit' })
+    setTimeout(() => {
+      if (analyzerProcess) {
+        analyzerProcess.kill()
+        analyzerProcess = null
+      }
+    }, 2000)
+  }
+}
+
+// 子进程分析 IPC（渲染进程调用）
+ipcMain.handle('analyzer-analyze', (_, data) => {
+  if (!analyzerProcess || !analyzerReady) {
+    return { success: false, error: '分析子进程未就绪' }
+  }
+  analyzerProcess.send({ type: 'analyze', ...data })
+  return { success: true }
+})
+
+ipcMain.handle('analyzer-status', () => ({
+  ready: analyzerReady,
+  pid: analyzerProcess?.pid || null
+}))
+
 // ===== 开机静默启动配置 =====
 // 检测是否通过开机自启动（带 --hidden 参数）
 const isHiddenStart = process.argv.includes('--hidden')
@@ -866,6 +946,9 @@ app.whenReady().then(() => {
   startPendingStrmCleanup()
   console.log('[应用] pendingStrmFiles 清理定时器已启动')
 
+  // 启动后台分析子进程
+  startAnalyzer()
+
   // 初始化开机自启动设置（保持上次的用户选择）
   const loginSettings = app.getLoginItemSettings()
   console.log(`[开机自启] 当前状态: openAtLogin=${loginSettings.openAtLogin} | execPath=${process.execPath}`)
@@ -907,7 +990,10 @@ app.on('before-quit', async () => {
   
   // 清空 pendingStrmFiles 数组
   pendingStrmFiles = []
-  
+
+  // 停止分析子进程
+  stopAnalyzer()
+
   // 销毁托盘图标
   if (tray) {
     tray.destroy()

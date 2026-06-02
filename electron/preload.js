@@ -59,5 +59,24 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // ===== 开机自启动 =====
   getAutoStart: () => ipcRenderer.invoke('get-auto-start'),
-  setAutoStart: (enabled) => ipcRenderer.invoke('set-auto-start', enabled)
+  setAutoStart: (enabled) => ipcRenderer.invoke('set-auto-start', enabled),
+
+  // ===== 后台分析子进程 =====
+  analyzerAnalyze: (data) => ipcRenderer.invoke('analyzer-analyze', data),
+  analyzerStatus: () => ipcRenderer.invoke('analyzer-status'),
+  onAnalyzerProgress: (callback) => {
+    const handler = (_, data) => callback(data)
+    ipcRenderer.on('analyzer-progress', handler)
+    return () => ipcRenderer.removeListener('analyzer-progress', handler)
+  },
+  onAnalyzerResult: (callback) => {
+    const handler = (_, data) => callback(data)
+    ipcRenderer.on('analyzer-result', handler)
+    return () => ipcRenderer.removeListener('analyzer-result', handler)
+  },
+  onAnalyzerError: (callback) => {
+    const handler = (_, data) => callback(data)
+    ipcRenderer.on('analyzer-error', handler)
+    return () => ipcRenderer.removeListener('analyzer-error', handler)
+  }
 })
