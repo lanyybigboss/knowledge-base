@@ -146,24 +146,22 @@ async function startFileWatcher(folderPath) {
         status.lastEvent = `新增: ${fileName}`
         status.fileCount++
       }
-      // ==================== [OBSIDIAN_ENABLED] 取消注释以启用 Obsidian vault 监控 ====================
-      // const isObsidianVault = watcherStatusMap[folderPath]?.isObsidianVault
-      // if (isObsidianVault && fileName.toLowerCase().endsWith('.md')) {
-      //   // Obsidian 笔记直接入队（不需要 .strm 引用）
-      //   pendingStrmFiles.push({
-      //     strmFileName: fileName,
-      //     strmFilePath: filePath,
-      //     originalFilePath: filePath,
-      //     isObsidianNote: true,
-      //     detectedAt: new Date().toISOString()
-      //   })
-      //   console.log(`[Obsidian] 笔记已入队: ${fileName}`)
-      //   if (mainWindow && !mainWindow.isDestroyed()) {
-      //     mainWindow.webContents.send('watcher-event', { type: 'add', filePath, fileName, folderPath, isObsidianNote: true, ...getCombinedWatcherStatus() })
-      //   }
-      //   return  // 跳过 .strm 创建
-      // }
-      // ==================== Obsidian 分支结束 ====================
+      // Obsidian vault 中的 .md 笔记直接入队（不需要 .strm 引用）
+      const isObsidianVault = watcherStatusMap[folderPath]?.isObsidianVault
+      if (isObsidianVault && fileName.toLowerCase().endsWith('.md')) {
+        pendingStrmFiles.push({
+          strmFileName: fileName,
+          strmFilePath: filePath,
+          originalFilePath: filePath,
+          isObsidianNote: true,
+          detectedAt: new Date().toISOString()
+        })
+        console.log(`[Obsidian] 笔记已入队: ${fileName}`)
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('watcher-event', { type: 'add', filePath, fileName, folderPath, isObsidianNote: true, ...getCombinedWatcherStatus() })
+        }
+        return  // 跳过 .strm 创建
+      }
 
       // 自动创建 .strm 引用
       let strmFilePath = ''

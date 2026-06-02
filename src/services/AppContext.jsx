@@ -322,28 +322,29 @@ function appReducer(state, action) {
       // 2. 解析文件信息
       const ext = (strmFileName.split('.').filter(s => s !== 'strm').pop() || '').toLowerCase()
       const baseName = strmFileName.replace(/\.strm$/i, '')
-      const title = baseName
+      let title = baseName
+      let content = ''
+      let tags = []
+      let categoryHint = null
       const binaryStr = atob(fileResult.content)
       const bytes = new Uint8Array(binaryStr.length)
       for (let i = 0; i < binaryStr.length; i++) bytes[i] = binaryStr.charCodeAt(i)
       const blob = new Blob([bytes], { type: fileResult.mimeType || 'application/octet-stream' })
 
-      // ==================== [OBSIDIAN_ENABLED] 取消注释以启用 Obsidian 笔记处理 ====================
-      // if (pendingItem.isObsidianNote && ext === 'md') {
-      //   const { parseFrontmatter, stripMarkdownSyntax } = await import('./obsidianService')
-      //   const rawContent = binaryStr  // .md 文件已作为文本读取
-      //   const { frontmatter, body } = parseFrontmatter(rawContent)
-      //   const plainText = stripMarkdownSyntax(body)
-      //   content = plainText
-      //   title = frontmatter.title || frontmatter.aliases?.[0] || path.basename(originalFilePath, '.md')
-      //   if (frontmatter.tags) tags = Array.isArray(frontmatter.tags) ? frontmatter.tags : [frontmatter.tags]
-      //   if (frontmatter.category) categoryHint = frontmatter.category
-      //   logger.info(`[Obsidian] 解析笔记: "${title}" (frontmatter: ${Object.keys(frontmatter).length} 字段, 正文: ${plainText.length} 字符)`)
-      // } else
-      // ==================== Obsidian 分支结束 ====================
+      // Obsidian 笔记：解析 frontmatter + 提取纯文本
+      if (pendingItem.isObsidianNote && ext === 'md') {
+        const { parseFrontmatter, stripMarkdownSyntax } = await import('./obsidianService')
+        const rawContent = binaryStr
+        const { frontmatter, body } = parseFrontmatter(rawContent)
+        const plainText = stripMarkdownSyntax(body)
+        content = plainText
+        title = frontmatter.title || frontmatter.aliases?.[0] || baseName.replace(/\.md$/i, '')
+        if (frontmatter.tags) tags = Array.isArray(frontmatter.tags) ? frontmatter.tags : [frontmatter.tags]
+        if (frontmatter.category) categoryHint = frontmatter.category
+        logger.info(`[Obsidian] 解析笔记: "${title}" (frontmatter: ${Object.keys(frontmatter).length} 字段, 正文: ${plainText.length} 字符)`)
+      }
 
-      // 3. 根据文件类型提取文本
-      let content = ''
+      // 3. 根据文件类型提取文本（非 Obsidian 笔记时）
       let aiResult = null
       const textExts = ['txt', 'md', 'csv', 'json', 'xml', 'html', 'js', 'ts', 'py', 'java', 'c', 'cpp', 'h', 'css', 'log', 'ini', 'cfg', 'yaml', 'yml', 'toml']
       const pdfExts = ['pdf']
@@ -351,7 +352,9 @@ function appReducer(state, action) {
       const imageExts = ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'tiff', 'tif']
 
       try {
-        if (textExts.includes(ext)) {
+        if (content) {
+          // 已由 Obsidian 分支提取内容，跳过普通文件处理
+        } else if (textExts.includes(ext)) {
           // 纯文本文件
           content = binaryStr
           logger.info(`[Strm 刮削] 文本文件: ${strmFileName} (${content.length} 字符)`)
@@ -434,13 +437,13 @@ function appReducer(state, action) {
         fileName: strmFileName,
         fileSize: fileResult.fileSize || 0,
         fileType: ext,
-        category: aiResult?.category || 'uncategorized',
-        tags: aiResult?.tags || [],
+        category: aiResult?.category || categoryHint || 'uncategorized',
+        tags: [...new Set([...(tags || []), ...(aiResult?.tags || [])])].slice(0, 5),
         keywords: aiResult?.keywords || [],
         content: content || `[${ext.toUpperCase()} 文件] 使用系统默认软件打开查看`,
         localFilePath: strmFilePath || '',
         isStrmRef: true,
-        source: 'watcher',
+        source: pendingItem.isObsidianNote ? 'obsidian' : 'watcher',
         summary: aiResult?.summary || '',
         detailedSummary: aiResult?.detailedSummary || '',
         entities: aiResult?.entities || { people: [], organizations: [], locations: [], dates: [] },

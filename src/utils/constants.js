@@ -98,7 +98,7 @@ export const ENTITY_COLORS = {
   dates: { color: '#8b5cf6', label: '日期', icon: '📅' }
 }
 
-// ==================== [OBSIDIAN_ENABLED] 取消注释以启用 Obsidian 集成 ====================
-// export const SOURCE_OBSIDIAN = 'obsidian'
-// export const OBSIDIAN_FRONTMATTER_AI_FIELDS = ['ai_summary', 'ai_category', 'ai_tags', 'ai_keywords', 'ai_entities', 'analyzed_at']
+// ==================== Obsidian 集成 ====================
+export const SOURCE_OBSIDIAN = 'obsidian'
+export const OBSIDIAN_FRONTMATTER_AI_FIELDS = ['ai_summary', 'ai_category', 'ai_tags', 'ai_keywords', 'ai_entities', 'analyzed_at']
 
