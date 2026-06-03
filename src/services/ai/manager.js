@@ -335,7 +335,8 @@ export function saveApiKey(key) {
  * 检查是否有 API Key
  */
 export function hasApiKey() {
-  return deepseekAdapter.isAvailable()
+  const key = localStorage.getItem('deepseek_api_key')
+  return !!(key && key.trim().length >= 20)
 }
 
 /**
