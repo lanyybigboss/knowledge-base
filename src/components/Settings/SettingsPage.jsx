@@ -5,7 +5,7 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { useApp } from '../../services/AppContext'
 import watcherService from '../../services/folderWatcherService'
-import { saveApiKey, hasApiKey, isOllamaAvailable } from '../../services/aiService'
+import { saveApiKey, isOllamaAvailable } from '../../services/aiService'
 import storageService from '../../services/storageService'
 import logger from '../../services/logger'
 import Modal from '../Common/Modal'
@@ -196,10 +196,6 @@ export default function SettingsPage() {
     } catch (e) {
       alert(`停止失败: ${e.message}`)
     }
-  }
-
-  const handleSaveNumbering = () => {
-    updateNumberingRules(numberForm)
   }
 
   const handleExportJSON = async () => {

@@ -5,7 +5,7 @@
 import React, { useState, useCallback, useMemo } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useApp } from '../../services/AppContext'
-import { formatFileSize, formatDate, getFileTypeInfo, getFileExtension } from '../../utils/helpers'
+import { formatFileSize, formatDate, getFileTypeInfo } from '../../utils/helpers'
 import { PRESET_CATEGORIES, SORT_OPTIONS, PAGE_SIZE_OPTIONS } from '../../utils/constants'
 import Modal from '../Common/Modal'
 import './DocumentList.css'
@@ -14,7 +14,6 @@ export default function DocumentList() {
   const {
     paginatedDocuments,
     pagination,
-    documents,
     filters,
     sort,
     pageSize,

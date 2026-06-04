@@ -22,7 +22,7 @@ import DevPanel from './components/DevPanel/DevPanel'
  * 内部应用组件（在 AppProvider 内部，可使用 useApp）
  */
 function AppInner() {
-  const { logViewerOpen, toggleLogViewer } = useApp()
+  const { toggleLogViewer } = useApp()
   const [quickSearchOpen, setQuickSearchOpen] = useState(false)
   const [devPanelOpen, setDevPanelOpen] = useState(false)
 

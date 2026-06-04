@@ -51,7 +51,6 @@ function tryJsonRepair(text) {
  */
 function extractJson(rawText) {
   let cleaned = rawText
-  let method = 'none'
 
   // 策略 1：直接解析
   try {

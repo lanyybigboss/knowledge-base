@@ -185,8 +185,6 @@ function safeParseJson(rawText) {
 }
 
 function normalizeResult(analysis) {
-  const today = new Date()
-  const dateStr = `${today.getFullYear()}${String(today.getMonth() + 1).padStart(2, '0')}${String(today.getDate()).padStart(2, '0')}`
 
   const safeStr = (val, fallback = '') => {
     if (!val) return fallback

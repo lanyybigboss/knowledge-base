@@ -12,7 +12,7 @@ import { analyzeDocument, hasApiKey, isOllamaAvailable } from './aiService'
 import backgroundAnalysisService from './backgroundAnalysisService'
 import searchService from './searchService'
 import syncService from './syncService'
-import { getFileExtension, filterDocuments, paginateDocuments, calculateStatistics } from '../utils/helpers'
+import { filterDocuments, paginateDocuments, calculateStatistics } from '../utils/helpers'
 
 // 创建上下文
 const AppContext = createContext(null)

@@ -3,7 +3,7 @@
  */
 
 import React, { useState } from 'react'
-import { NavLink, useLocation, useNavigate } from 'react-router-dom'
+import { NavLink, useNavigate } from 'react-router-dom'
 import { useApp } from '../../services/AppContext'
 import { PRESET_CATEGORIES, FILE_TYPE_MAP } from '../../utils/constants'
 import { getFileExtension } from '../../utils/helpers'
@@ -19,7 +19,6 @@ const NAV_ITEMS = [
 
 export default function Sidebar() {
   const { sidebarOpen, documents, categories, setFilters, filters } = useApp()
-  const location = useLocation()
   const navigate = useNavigate()
   const [showAllTypes, setShowAllTypes] = useState(false)
   const [showAllCats, setShowAllCats] = useState(false)

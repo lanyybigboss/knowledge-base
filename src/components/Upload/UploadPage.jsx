@@ -8,7 +8,7 @@ import { useNavigate } from 'react-router-dom'
 import { useDropzone } from 'react-dropzone'
 import { useApp } from '../../services/AppContext'
 import { formatFileSize, getFileExtension } from '../../utils/helpers'
-import { PRESET_CATEGORIES, MAX_FILE_SIZE } from '../../utils/constants'
+import { MAX_FILE_SIZE } from '../../utils/constants'
 import { analyzeDocuments, hasApiKey, isOllamaAvailable, invalidateOllamaHealth } from '../../services/aiService'
 import logger from '../../services/logger'
 import apiService from '../../services/apiService'
@@ -179,7 +179,7 @@ function readFileAsBase64(file) {
 
 export default function UploadPage() {
   const navigate = useNavigate()
-  const { addDocument, showNotification, categories } = useApp()
+  const { addDocument, showNotification } = useApp()
   const [uploading, setUploading] = useState(false)
   const [uploadProgress, setUploadProgress] = useState(0)
   const [uploadStatus, setUploadStatus] = useState('') // 状态提示
@@ -203,11 +203,6 @@ export default function UploadPage() {
     }
     checkAi()
   }, [])
-
-  const allCategories = [
-    ...PRESET_CATEGORIES,
-    ...categories
-  ]
 
   // 核心：拖拽文件后自动处理
   const processFiles = useCallback(async (acceptedFiles) => {
@@ -328,7 +323,6 @@ export default function UploadPage() {
 
       // 2. 检查哪些文件有实际文本内容（可以用于 AI 分析）
       const textFiles = fileContents.filter(fc => fc.previewType === 'text')
-      const nonTextFiles = fileContents.filter(fc => fc.previewType !== 'text')
 
       // 3. AI 批量分析（只分析有文本内容的文件）
       // 将文件内容和提取的文本一并传给 AI，确保 OCR 识别的文字也能被分析

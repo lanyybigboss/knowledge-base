@@ -19,7 +19,7 @@ export class BaseAIAdapter {
    * @param {number} [options.timeoutMs] - 超时毫秒数
    * @returns {Promise<string>} 模型返回的原始文本
    */
-  async chat(systemPrompt, userPrompt, options = {}) {
+  async chat(systemPrompt, userPrompt, _options = {}) {
     throw new Error('Not implemented')
   }
 }

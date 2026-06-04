@@ -29,8 +29,7 @@ function startOllamaIfNotRunning() {
   }
 
   const checkReq = http.get('http://localhost:11434/api/tags', { timeout: 3000 }, (res) => {
-    let data = ''
-    res.on('data', (chunk) => { data += chunk })
+    res.on('data', () => {})
     res.on('end', () => {
       console.log('[Ollama] 已检测到 Ollama 服务正在运行，跳过启动')
     })

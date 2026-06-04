@@ -222,7 +222,7 @@ export default function KnowledgeGraph({ onNavigate }) {
     const onResize = () => {
       const wrap = wrapRef.current, canvas = canvasRef.current
       if (!wrap || !canvas) return
-      const { nodes, edges, pos } = stateRef.current
+      const { nodes, edges } = stateRef.current
       if (!nodes.length) return
       const dpr = window.devicePixelRatio || 1
       const w = wrap.clientWidth, h = 360

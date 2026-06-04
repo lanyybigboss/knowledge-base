@@ -192,7 +192,7 @@ export default function StatisticsPage() {
             <h3 className="card-title">📅 最近文档</h3>
           </div>
           <div className="statistics-timeline">
-            {recentDocuments.length > 0 ? recentDocuments.slice(0, 10).map((doc, index) => {
+            {recentDocuments.length > 0 ? recentDocuments.slice(0, 10).map((doc) => {
               const typeInfo = getFileTypeInfo(doc.fileName || doc.title)
               return (
                 <div key={doc.id} className="statistics-timeline-item">
