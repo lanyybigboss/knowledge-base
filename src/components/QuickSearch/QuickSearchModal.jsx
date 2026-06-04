@@ -83,6 +83,14 @@ export default function QuickSearchModal({ isOpen, onClose }) {
     }
   }, [])
 
+  // 选择结果项
+  const handleSelect = useCallback((result) => {
+    if (!result || !result.item) return
+    onClose()
+    logger.info(`[QuickSearch] 导航到文档: "${result.item.title || result.item.fileName}"`)
+    navigate(`/documents/${result.item.id}`)
+  }, [navigate, onClose])
+
   // 键盘导航
   const handleKeyDown = useCallback((e) => {
     switch (e.key) {
@@ -108,14 +116,6 @@ export default function QuickSearchModal({ isOpen, onClose }) {
         break
     }
   }, [results, selectedIndex, onClose, handleSelect])
-
-  // 选择结果项
-  const handleSelect = useCallback((result) => {
-    if (!result || !result.item) return
-    onClose()
-    logger.info(`[QuickSearch] 导航到文档: "${result.item.title || result.item.fileName}"`)
-    navigate(`/documents/${result.item.id}`)
-  }, [navigate, onClose])
 
   // 高亮匹配文本
   const highlightMatch = useCallback((text, query) => {
