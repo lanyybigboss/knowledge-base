@@ -517,7 +517,7 @@ function appReducer(state, action) {
     } catch (error) {
       logger.error('[UI_REFRESH] reloadDocuments 失败:', error)
     }
-  }, [])
+  }, [debouncedBuildSearchIndex])
 
   // ===== debounced reload (300ms 内多次触发合并为 1 次) =====
   const reloadTimerRef = useRef(null)
@@ -568,7 +568,7 @@ function appReducer(state, action) {
       showNotification('error', '添加文档失败: ' + error.message)
       return null
     }
-  }, [])
+  }, [showNotification])
   
   const updateDocument = useCallback(async (id, updates) => {
     try {
@@ -584,7 +584,7 @@ function appReducer(state, action) {
       showNotification('error', '更新文档失败: ' + error.message)
       return null
     }
-  }, [])
+  }, [showNotification])
   
   const deleteDocument = useCallback(async (id) => {
     try {
@@ -602,7 +602,7 @@ function appReducer(state, action) {
       showNotification('error', '删除文档失败')
       return false
     }
-  }, [])
+  }, [showNotification])
   
   const deleteDocuments = useCallback(async (ids) => {
     try {
@@ -619,7 +619,7 @@ function appReducer(state, action) {
       showNotification('error', '批量删除失败')
       return 0
     }
-  }, [])
+  }, [showNotification])
   
   const toggleStar = useCallback(async (id) => {
     try {
@@ -649,7 +649,7 @@ function appReducer(state, action) {
       showNotification('error', '添加分类失败')
       return null
     }
-  }, [])
+  }, [showNotification])
   
   const updateCategory = useCallback(async (id, updates) => {
     try {
@@ -665,7 +665,7 @@ function appReducer(state, action) {
       showNotification('error', '更新分类失败')
       return null
     }
-  }, [])
+  }, [showNotification])
   
   const deleteCategory = useCallback(async (id) => {
     try {
@@ -681,7 +681,7 @@ function appReducer(state, action) {
       showNotification('error', '删除分类失败')
       return false
     }
-  }, [])
+  }, [showNotification])
   
   // ===== 设置方法 =====
   
@@ -698,7 +698,7 @@ function appReducer(state, action) {
       showNotification('error', '保存设置失败')
       return false
     }
-  }, [])
+  }, [showNotification])
   
   const updateNumberingRules = useCallback(async (rules) => {
     try {
@@ -713,7 +713,7 @@ function appReducer(state, action) {
       showNotification('error', '更新编号规则失败')
       return false
     }
-  }, [])
+  }, [showNotification])
   
   // ===== 数据管理 =====
   
@@ -743,7 +743,7 @@ function appReducer(state, action) {
       showNotification('error', message)
       return { success: false, message }
     }
-  }, [loadData])
+  }, [loadData, showNotification])
   
   const clearAllData = useCallback(async () => {
     try {
@@ -755,7 +755,7 @@ function appReducer(state, action) {
       logger.error('清除数据失败:', error)
       showNotification('error', '清除数据失败')
     }
-  }, [])
+  }, [showNotification])
   
   // ===== UI 方法 =====
   

@@ -42,7 +42,7 @@ export default function DocumentList() {
     if (categoryParam) {
       setFilters({ category: categoryParam })
     }
-  }, [])
+  }, [searchParams, setFilters])
 
   const handleSelectAll = useCallback(() => {
     if (selectAll) {

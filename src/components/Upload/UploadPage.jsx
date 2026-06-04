@@ -464,7 +464,7 @@ export default function UploadPage() {
     } finally {
       setUploading(false)
     }
-  }, [addDocument, navigate, showNotification])
+  }, [addDocument, navigate, showNotification, useStrmRef])
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop: processFiles,

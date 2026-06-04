@@ -107,7 +107,7 @@ export default function QuickSearchModal({ isOpen, onClose }) {
       default:
         break
     }
-  }, [results, selectedIndex, onClose])
+  }, [results, selectedIndex, onClose, handleSelect])
 
   // 选择结果项
   const handleSelect = useCallback((result) => {
