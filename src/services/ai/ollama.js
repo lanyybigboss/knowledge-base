@@ -7,14 +7,14 @@ import { BaseAIAdapter } from './base'
 import logger from '../logger'
 
 const OLLAMA_BASE_URL = 'http://localhost:11434'
-const OLLAMA_MODEL = 'qwen2.5:7b-instruct-q4_K_M'
+const OLLAMA_MODELS = ['qwen2.5:7b-instruct-q4_K_M', 'qwen2.5:3b']
 const HEALTH_TTL = 30000
 
 /** 健康检查缓存 */
 let _healthCache = { available: false, checkedAt: 0, checking: false, checkPromise: null }
 
 export class OllamaAdapter extends BaseAIAdapter {
-  get name() { return `Ollama(${OLLAMA_MODEL})` }
+  get name() { return `Ollama(${OLLAMA_MODELS[0]})` }
 
   /**
    * 检查 Ollama 是否可用（带 30 秒 TTL 缓存 + 并发去重）
@@ -47,11 +47,12 @@ export class OllamaAdapter extends BaseAIAdapter {
 
         const data = await response.json()
         const models = data.models || []
-        const hasModel = models.some(m => m.name?.startsWith(OLLAMA_MODEL.split(':')[0]))
+        const modelNames = models.map(m => m.name || '')
+        const hasModel = OLLAMA_MODELS.some(m => modelNames.some(n => n.startsWith(m.split(':')[0])))
 
         _healthCache.available = hasModel
         _healthCache.checkedAt = now
-        logger.info(`[Ollama] 健康检查通过，模型 ${OLLAMA_MODEL} ${hasModel ? '已找到' : '未找到'}`)
+        logger.info(`[Ollama] 健康检查通过，模型 ${hasModel ? '已找到' : '未找到'} (${OLLAMA_MODELS.join(', ')})`)
         return hasModel
       } catch (err) {
         _healthCache.available = false
@@ -75,45 +76,52 @@ export class OllamaAdapter extends BaseAIAdapter {
   }
 
   /**
-   * 发送聊天请求到 Ollama
+   * 发送聊天请求到 Ollama（模型降级链：7b → 3b）
    */
   async chat(systemPrompt, userPrompt, options = {}) {
     const { timeoutMs = 180000 } = options
-
-    const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
     const startTime = Date.now()
 
-    try {
-      logger.info(`[AI] request_start | model=${this.name} | promptLength=${userPrompt.length}`)
+    for (const model of OLLAMA_MODELS) {
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
 
-      const response = await fetch(`${OLLAMA_BASE_URL}/api/chat`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: OLLAMA_MODEL,
-          messages: [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: userPrompt + '\n\n请严格返回 JSON 格式，不要包含任何其他文字。' }
-          ],
-          stream: false,
-          format: 'json'
-        }),
-        signal: controller.signal
-      })
+      try {
+        logger.info(`[AI] request_start | model=Ollama(${model}) | promptLength=${userPrompt.length}`)
 
-      if (!response.ok) {
-        throw new Error(`Ollama API 请求失败: ${response.status}`)
+        const response = await fetch(`${OLLAMA_BASE_URL}/api/chat`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            model,
+            messages: [
+              { role: 'system', content: systemPrompt },
+              { role: 'user', content: userPrompt + '\n\n请严格返回 JSON 格式，不要包含任何其他文字。' }
+            ],
+            stream: false,
+            format: 'json'
+          }),
+          signal: controller.signal
+        })
+
+        if (!response.ok) {
+          logger.warn(`[Ollama] ${model} 返回 ${response.status}，尝试下一个模型...`)
+          continue
+        }
+
+        const requestTime = Date.now() - startTime
+        logger.info(`[AI] request_complete | model=Ollama(${model}) | requestTime=${requestTime}ms`)
+
+        const data = await response.json()
+        return data.message?.content || ''
+      } catch (err) {
+        logger.warn(`[Ollama] ${model} 请求失败: ${err.message}，尝试下一个模型...`)
+      } finally {
+        clearTimeout(timeoutId)
       }
-
-      const requestTime = Date.now() - startTime
-      logger.info(`[AI] request_complete | model=${this.name} | requestTime=${requestTime}ms`)
-
-      const data = await response.json()
-      return data.message?.content || ''
-    } finally {
-      clearTimeout(timeoutId)
     }
+
+    throw new Error('所有 Ollama 模型均不可用')
   }
 }
 
