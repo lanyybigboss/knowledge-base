@@ -292,7 +292,7 @@ function appReducer(state, action) {
   // ===== Strm 文件自动刮削（影子文件入库 + AI 分析） =====
   const stopAutoProcessRef = useRef(null)
 
-  const processStrmFile = useCallback(async (strmFileName, originalFilePath, strmFilePath) => {
+  const processStrmFile = useCallback(async (strmFileName, originalFilePath, strmFilePath, isObsidianNote = false) => {
     try {
       logger.info(`[Strm 刮削] 开始处理: ${strmFileName}`)
 
@@ -332,7 +332,7 @@ function appReducer(state, action) {
       const blob = new Blob([bytes], { type: fileResult.mimeType || 'application/octet-stream' })
 
       // Obsidian 笔记：解析 frontmatter + 提取纯文本
-      if (pendingItem.isObsidianNote && ext === 'md') {
+      if (isObsidianNote && ext === 'md') {
         const { parseFrontmatter, stripMarkdownSyntax } = await import('./obsidianService')
         const rawContent = binaryStr
         const { frontmatter, body } = parseFrontmatter(rawContent)
@@ -443,7 +443,7 @@ function appReducer(state, action) {
         content: content || `[${ext.toUpperCase()} 文件] 使用系统默认软件打开查看`,
         localFilePath: strmFilePath || '',
         isStrmRef: true,
-        source: pendingItem.isObsidianNote ? 'obsidian' : 'watcher',
+        source: isObsidianNote ? 'obsidian' : 'watcher',
         summary: aiResult?.summary || '',
         detailedSummary: aiResult?.detailedSummary || '',
         entities: aiResult?.entities || { people: [], organizations: [], locations: [], dates: [] },
@@ -472,9 +472,8 @@ function appReducer(state, action) {
 
   // 启动/停止自动刮削轮询
   useEffect(() => {
-    const processor = (strmFileName, originalFilePath) => {
-      // 获取 strmFilePath 需要从 watcherService 获取完整信息
-      return processStrmFile(strmFileName, originalFilePath, '')
+    const processor = (strmFileName, originalFilePath, strmFilePath, isObsidianNote) => {
+      return processStrmFile(strmFileName, originalFilePath, strmFilePath || '', isObsidianNote)
     }
     stopAutoProcessRef.current = watcherService.startAutoProcessing(processor, 8000)
     logger.info('[Strm 刮削] 自动处理轮询已启动 (间隔 8 秒)')

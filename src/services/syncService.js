@@ -239,7 +239,7 @@ class SyncService {
         await storageService.updateSettings(cleanSettings)
       }
 
-      await storageService.updateSettings({ _syncUpdatedAt })
+      await storageService.updateSettings({ _syncUpdatedAt: _updatedAt })
       this._lastRemoteUpdatedAt = _updatedAt
 
       logger.info(`[SyncService] 拉取完成: ${documents.length} 文档, ${categories.length} 分类`)

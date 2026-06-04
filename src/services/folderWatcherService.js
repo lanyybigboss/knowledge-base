@@ -119,7 +119,7 @@ export const watcherService = {
           for (const file of result.files) {
             logger.info(`[Strm 自动处理] 开始处理: ${file.strmFileName}`)
             try {
-              const ok = await processor(file.strmFileName, file.originalFilePath, file.strmFilePath || '')
+              const ok = await processor(file.strmFileName, file.originalFilePath, file.strmFilePath || '', file.isObsidianNote || false)
               if (ok) {
                 await this.markProcessed(file.strmFileName)
                 logger.info(`[Strm 自动处理] ✅ 已完成: ${file.strmFileName}`)
