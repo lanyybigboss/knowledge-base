@@ -109,7 +109,7 @@ export default function DocumentList() {
           <h1 className="document-list-title">文档管理</h1>
           <p className="document-list-subtitle">
             共 {pagination.total} 个文档
-            {searchQuery && <span> · 搜索: "{searchQuery}"</span>}
+            {searchQuery && <span> · 搜索: &quot;{searchQuery}&quot;</span>}
           </p>
         </div>
         <div className="document-list-actions">

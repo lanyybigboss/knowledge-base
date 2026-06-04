@@ -31,5 +31,19 @@
     "react": {
       "version": "18"
     }
-  }
+  },
+  "overrides": [
+    {
+      "files": ["electron/**/*.js"],
+      "rules": {
+        "no-console": "off"
+      }
+    },
+    {
+      "files": ["src/services/logger.js"],
+      "rules": {
+        "no-console": "off"
+      }
+    }
+  ]
 }

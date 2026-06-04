@@ -19,6 +19,7 @@ import logger from '../logger'
 function isTextGarbled(str) {
   if (!str || typeof str !== 'string') return false
   if (str.includes('�')) return true
+  // eslint-disable-next-line no-control-regex -- intentional: detect control chars in garbled text
   if (/[\x00-\x08\x0B\x0C\x0E-\x1F]/.test(str)) return true
   const hasCJK = /[一-鿿]/.test(str)
   const hasHighLatin = /[\x80-\xFF]/.test(str)
@@ -99,6 +100,7 @@ function safeParseJson(rawText) {
   }
 
   // 清洗控制字符
+  // eslint-disable-next-line no-control-regex -- intentional: strip control chars from AI JSON output
   const sanitized = repairResult.text.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '')
   return JSON.parse(sanitized)
 }
@@ -113,8 +115,8 @@ function extractFallbackEntities(keywords, summary, detailedSummary) {
   const entities = { people: [], organizations: [], locations: [], dates: [] }
 
   const datePatterns = [
-    /\d{4}年\d{1,2}月/g, /\d{4}[-\/]\d{1,2}[-\/]\d{1,2}/g,
-    /\d{4}[-\/]\d{1,2}/g, /\d{4}年/g, /Q[1-4]/g
+    /\d{4}年\d{1,2}月/g, /\d{4}[-/]\d{1,2}[-/]\d{1,2}/g,
+    /\d{4}[-/]\d{1,2}/g, /\d{4}年/g, /Q[1-4]/g
   ]
   for (const p of datePatterns) {
     const matches = text.match(p)
@@ -174,6 +176,7 @@ function normalizeResult(analysis) {
     try { return JSON.stringify(val) } catch { return String(val) }
   }
 
+  /* eslint-disable no-control-regex -- intentional: strip control chars from AI output */
   return {
     category: analysis.category || 'other',
     summary: cleanMarkdown(safeStr(analysis.summary).replace(/[\x00-\x1F\x7F]/g, '')),
@@ -189,14 +192,15 @@ function normalizeResult(analysis) {
     })(),
     smartTitle: safeStr(analysis.smartTitle).substring(0, 20).replace(/[\x00-\x1F\x7F]/g, '')
   }
+  /* eslint-enable no-control-regex */
 }
 
 /**
  * 字段校验：验证 normalizeResult 产出是否有效
  */
 function validateAnalysisResult(normalized) {
-  const summaryOk = (normalized.summary || '').replace(/[\s　]/g, '').length >= 3
-  const detailedOk = (normalized.detailedSummary || '').replace(/[\s　]/g, '').length >= 20
+  const summaryOk = (normalized.summary || '').replace(/[\s\u3000]/g, '').length >= 3
+  const detailedOk = (normalized.detailedSummary || '').replace(/[\s\u3000]/g, '').length >= 20
   const keywordsOk = (normalized.keywords || []).length >= 2
   const smartTitleOk = (normalized.smartTitle || '').trim().length >= 2
 

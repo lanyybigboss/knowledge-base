@@ -674,7 +674,7 @@ export default function SettingsPage() {
                   <span className="ai-strategy-num">3</span>
                   <div>
                     <strong>兜底：自动分类</strong>
-                    <p>当所有 AI 服务均失败时，文档仍可正常添加，归入"其他"分类，支持手动编辑。</p>
+                    <p>当所有 AI 服务均失败时，文档仍可正常添加，归入&quot;其他&quot;分类，支持手动编辑。</p>
                   </div>
                 </div>
               </div>

@@ -620,7 +620,7 @@ export default function DocumentDetail() {
         }
       >
         <p style={{ color: 'var(--text-secondary)', lineHeight: 1.6 }}>
-          确定要删除文档 "{doc.title}" 吗？此操作不可撤销。
+          确定要删除文档 &quot;{doc.title}&quot; 吗？此操作不可撤销。
         </p>
       </Modal>
     </div>

@@ -164,12 +164,12 @@ async function callOllama(systemPrompt, userPrompt) {
 function safeParseJson(rawText) {
   // 提取 JSON
   let cleaned = rawText.trim()
-  try { JSON.parse(cleaned); return JSON.parse(cleaned) } catch {}
+  try { JSON.parse(cleaned); return JSON.parse(cleaned) } catch { /* ignore */ }
 
   const fenceMatch = rawText.match(/```(?:json)?\s*([\s\S]*?)```/)
   if (fenceMatch) {
     cleaned = fenceMatch[1].trim()
-    try { return JSON.parse(cleaned) } catch {}
+    try { return JSON.parse(cleaned) } catch { /* ignore */ }
   }
 
   const startIdx = rawText.indexOf('{')
@@ -180,7 +180,7 @@ function safeParseJson(rawText) {
 
   // 修复 + 清洗
   cleaned = cleaned.replace(/,\s*([}\]])/g, '$1')
-  cleaned = cleaned.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '')
+  cleaned = cleaned.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '') // eslint-disable-line no-control-regex
   return JSON.parse(cleaned)
 }
 

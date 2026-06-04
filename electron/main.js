@@ -166,7 +166,7 @@ async function startFileWatcher(folderPath) {
       }).length
     } catch (e) { /* ignore */ }
     const instance = chokidar.default.watch(folderPath, {
-      ignored: /(^|[\/\\])\../,
+      ignored: /(^|[/\\])\../,
       persistent: true,
       ignoreInitial: true,
       depth: 0,
