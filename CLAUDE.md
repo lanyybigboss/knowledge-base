@@ -89,6 +89,13 @@ src/
 │   ├── constants.js
 │   └── helpers.js
 └── electron/
-    ├── main.js            # Electron 主进程
+    ├── main.js            # Electron 主进程（含 Ollama 自动拉起）
     └── preload.js         # 预加载脚本
 ```
+
+## ESLint 配置
+
+`.eslintrc.json` — 0 errors, 0 warnings:
+- `no-console: error`（强制使用 logger 单例）
+- `react-hooks/exhaustive-deps: warn`（完整依赖数组）
+- `electron/` 和 `logger.js` 豁免 no-console 规则
