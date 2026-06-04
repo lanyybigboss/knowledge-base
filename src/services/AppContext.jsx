@@ -550,7 +550,15 @@ function appReducer(state, action) {
       }
     }
   }, [])
-  
+  // ===== UI 方法（定义在业务方法之前，避免时序死区） =====
+
+  const showNotification = useCallback((type, message, duration = 3000) => {
+    dispatch({ type: ACTIONS.SET_NOTIFICATION, payload: { type, message } })
+    setTimeout(() => {
+      dispatch({ type: ACTIONS.CLEAR_NOTIFICATION })
+    }, duration)
+  }, [])
+
   // ===== 文档操作方法 =====
   
   const addDocument = useCallback(async (docData) => {
@@ -757,14 +765,8 @@ function appReducer(state, action) {
     }
   }, [showNotification])
   
-  // ===== UI 方法 =====
-  
-  const showNotification = useCallback((type, message, duration = 3000) => {
-    dispatch({ type: ACTIONS.SET_NOTIFICATION, payload: { type, message } })
-    setTimeout(() => {
-      dispatch({ type: ACTIONS.CLEAR_NOTIFICATION })
-    }, duration)
-  }, [])
+
+
   
   const setSearch = useCallback((query) => {
     dispatch({ type: ACTIONS.SET_SEARCH, payload: query })
