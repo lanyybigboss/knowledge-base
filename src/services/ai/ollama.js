@@ -7,7 +7,7 @@ import { BaseAIAdapter } from './base'
 import logger from '../logger'
 
 const OLLAMA_BASE_URL = 'http://localhost:11434'
-const OLLAMA_MODELS = ['qwen2.5:7b-instruct-q4_K_M', 'qwen2.5:3b']
+const OLLAMA_MODELS = ['qwen2.5:7b-instruct-q4_K_M']
 const HEALTH_TTL = 30000
 
 /** 健康检查缓存 */
