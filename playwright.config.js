@@ -24,7 +24,7 @@ module.exports = defineConfig({
   webServer: {
     command: 'npx vite --port 3000',
     url: 'http://localhost:3000',
-    reuseExistingServer: false,
+    reuseExistingServer: true,
     timeout: 30000,
   },
 });

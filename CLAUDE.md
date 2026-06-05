@@ -82,15 +82,30 @@ src/
 │   ├── backgroundAnalysisService.js # 后台 AI 调度
 │   ├── syncService.js              # 跨模式数据同步
 │   ├── logger.js                   # 日志系统（单例）
-│   ├── AppContext.jsx              # 全局状态管理
+│   ├── AppContext.jsx              # 全局状态管理（精简版）
+│   ├── appReducer.js               # 纯状态逻辑（ACTIONS + reducer）
+│   ├── useAppActions.js            # 业务操作 hooks
+│   ├── useAppComputed.js           # 计算属性 hooks
 │   ├── apiService.js               # 统一 API（HTTP/IPC 双模式）
-│   └── folderWatcherService.js     # 文件夹监控
+│   ├── folderWatcherService.js     # 文件夹监控
+│   ├── strmFileProcessor.js        # 文件解析核心
+│   ├── obsidianService.js          # Obsidian 集成（frontmatter/markdown）
+│   └── searchService.js            # 搜索引擎（Fuse.js）
 ├── utils/
 │   ├── constants.js
 │   └── helpers.js
 └── electron/
-    ├── main.js            # Electron 主进程（含 Ollama 自动拉起）
-    └── preload.js         # 预加载脚本
+    ├── main.js            # Electron 主进程（精简版，225行）
+    ├── versionLock.js     # 版本互斥系统
+    ├── ollamaLauncher.js  # Ollama 自动拉起
+    ├── storage.js         # 存储目录配置
+    ├── watcher.js         # 文件夹监控（chokidar + Obsidian）
+    ├── strmFile.js        # Strm 引用文件
+    ├── ipcHandlers.js     # IPC 通信处理
+    ├── analyzerManager.js # 分析子进程管理
+    ├── analyzer.js        # 后台分析子进程
+    ├── preload.js         # 预加载脚本
+    └── launcher.js        # 开发启动器
 ```
 
 ## ESLint 配置
