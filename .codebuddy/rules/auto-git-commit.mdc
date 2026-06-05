@@ -1,0 +1,22 @@
+---
+description: 
+alwaysApply: true
+enabled: true
+updatedAt: 2026-05-26T23:39:33.375Z
+provider: 
+---
+
+# Git 自动提交规范
+
+每次对项目代码进行修改后，必须自动执行 git 管理：
+
+1. **修改完成后立即提交**：使用 `git -C E:\O1 add <修改的文件>` + `git -C E:\O1 commit -m "<描述>"`
+2. **一个功能一个 commit**：不混合无关修改
+3. **Commit message 规范**：
+   - `fix:` — 修复 bug
+   - `feat:` — 新功能
+   - `refactor:` — 重构
+   - `chore:` — 杂项（配置、依赖等）
+   - `docs:` — 文档
+   - 中文描述具体改动内容
+4. **项目路径**：`E:\O1`，使用 `git -C E:\O1` 执行所有 git 命令

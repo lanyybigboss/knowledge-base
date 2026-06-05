@@ -45,7 +45,8 @@ export default function DevPanel({ isOpen, onClose }) {
       })
       setRecentLogs(logs)
     }
-n    refresh()
+
+    refresh()
     const timer = setInterval(refresh, 1000)
     return () => clearInterval(timer)
   }, [isOpen, documents.length]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -58,6 +59,7 @@ export default function DevPanel({ isOpen, onClose }) {
         {/* 头部 */}
         <div className="dev-panel-header">
           <span className="dev-panel-title">🔧 AI 调试面板</span>
+          <span className="dev-panel-hint">Ctrl+Shift+D 切换</span>
           <div className="dev-panel-header-actions">
             <button
               className="dev-panel-btn"
@@ -66,27 +68,10 @@ export default function DevPanel({ isOpen, onClose }) {
             >
               🗑️ 清空日志
             </button>
-            <button
-              className="dev-panel-btn"
-              onClick={async () => {
-                try {
-                  showNotification('info', '触发后台扫描中...')
-                  await backgroundAnalysisService.scanNow()
-                  showNotification('success', '后台扫描已触发，查看最日志以确认结果')
-                } catch (e) {
-                  console.error('[DevPanel] 触发扫描异常:', e)
-                  showNotification('error', `触发扫描失败: ${e.message || e}`)
-                }
-              }}
-              title="触发后台扫描"
-            >
-              ▶️ 触发扫描
-            </button>
             <button className="dev-panel-btn dev-panel-close" onClick={onClose}>
               ✕
             </button>
           </div>
-          <span className="dev-panel-hint">Ctrl+Shift+D 切换</span>
         </div>
 
         {/* 内容区 */}

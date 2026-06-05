@@ -1,0 +1,110 @@
+/**
+ * 知识图谱样式 — Warm Digital Archive
+ */
+
+.kg-card {
+  grid-column: 1 / -1;
+}
+
+.kg-stats {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+.kg-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 60px 20px;
+  color: var(--text-tertiary);
+  font-size: 0.875rem;
+}
+
+.kg-spinner {
+  width: 18px;
+  height: 18px;
+  border: 2px solid var(--border-primary);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+
+.kg-canvas-wrapper {
+  position: relative;
+  width: 100%;
+  height: 360px;
+  border-radius: var(--radius-md);
+  background: var(--bg-primary);
+  overflow: hidden;
+  border: 1px solid var(--border-primary);
+}
+
+.kg-canvas-wrapper canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.kg-tooltip {
+  position: absolute;
+  bottom: 12px;
+  left: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 14px;
+  background: rgba(28, 26, 23, 0.92);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-primary);
+  pointer-events: none;
+  backdrop-filter: blur(12px);
+}
+
+.kg-tooltip-type {
+  font-size: 0.625rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--primary);
+}
+
+.kg-tooltip-name {
+  font-family: var(--font-display);
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.kg-tooltip-meta {
+  font-size: 0.75rem;
+  color: var(--text-tertiary);
+}
+
+.kg-legend {
+  display: flex;
+  gap: 20px;
+  padding: 12px 0 0;
+  flex-wrap: wrap;
+}
+
+.kg-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+}
+
+.kg-legend-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  box-shadow: 0 0 4px currentColor;
+}
+
+.kg-legend-count {
+  color: var(--text-muted);
+  font-size: 0.7rem;
+}

@@ -1,0 +1,197 @@
+---
+name: prototype-prompt-generator
+description: "This skill should be used when users need to generate detailed, structured prompts for creating UI/UX prototypes. Trigger when users request help with 'create a prototype prompt', 'design a mobile app', 'generate UI specifications', or need comprehensive design documentation for web/mobile applications. Works with multiple design systems including WeChat Work, iOS Native, Material Design, and Ant Design Mobile."
+---
+
+# Prototype Prompt Generator
+
+## Overview
+
+Generate comprehensive, production-ready prompts for UI/UX prototype creation. Transform user requirements into detailed technical specifications that include design systems, color palettes, component specifications, layout structures, and implementation guidelines. Output prompts are structured for optimal consumption by AI tools or human developers building HTML/CSS/React prototypes.
+
+## Workflow
+
+### Step 1: Gather Requirements
+
+Begin by collecting essential information from the user. Ask targeted questions to understand:
+
+**Application Type & Purpose:**
+- What kind of application? (e.g., enterprise tool, e-commerce, social media, dashboard)
+- Who are the target users?
+- What are the primary use cases and workflows?
+
+**Platform & Context:**
+- Target platform: iOS, Android, Web, WeChat Mini Program, or cross-platform?
+- Device: Mobile phone, tablet, desktop, or responsive?
+- Viewport dimensions if known (e.g., 375px for iPhone, 1200px for desktop)
+
+**Design Preferences:**
+- Design style: WeChat Work, iOS Native, Material Design, Ant Design Mobile, or custom?
+- Brand colors or visual preferences?
+- Any design references or inspiration?
+
+**Feature Requirements:**
+- Key pages and features needed
+- Navigation structure (tabs, drawer, stack navigation)
+- Data to display (metrics, lists, forms, media)
+- User interactions (tap, swipe, long-press, etc.)
+
+**Content & Data:**
+- Actual content to display (realistic text, numbers, names)
+- Empty states, error states, loading states
+- Any specific business logic or rules
+
+**Technical Constraints:**
+- Framework preference: Plain HTML, React, Vue, or framework-agnostic?
+- CSS approach: Tailwind CSS, CSS Modules, styled-components?
+- Image assets: Real images, placeholders, or specific sources?
+- CDN dependencies or version requirements?
+
+**Ask questions incrementally** (2-3 at a time) to avoid overwhelming the user. Many details can be inferred from context or filled with sensible defaults.
+
+### Step 2: Select Design System
+
+Based on the gathered requirements, choose the appropriate design system:
+
+**WeChat Work Style:**
+- **When to use**: Chinese enterprise applications, work management tools, B2B platforms, internal business systems
+- **Characteristics**: Simple and professional, tech blue primary color, clear information hierarchy
+- **Key audience**: Chinese business users, corporate environments
+
+**iOS Native Style:**
+- **When to use**: iOS-specific apps, Apple ecosystem integration, apps targeting iPhone/iPad users
+- **Characteristics**: Minimalist, spacious layouts, San Francisco font, system colors
+- **Key audience**: Apple users, consumer apps, content-focused applications
+
+**Material Design Style:**
+- **When to use**: Android-first apps, Google ecosystem integration, cross-platform with Material UI
+- **Characteristics**: Bold graphics, elevation system, ripple effects, Roboto font
+- **Key audience**: Android users, Google services, developer tools
+
+**Ant Design Mobile Style:**
+- **When to use**: Enterprise mobile applications with complex data entry and forms
+- **Characteristics**: Efficiency-oriented, consistent components, suitable for business applications
+- **Key audience**: Business users, enterprise mobile apps, data-heavy interfaces
+
+**If the user hasn't specified a design system**, recommend one based on:
+- Geographic location: Chinese users → WeChat Work, Western users → iOS/Material
+- Platform: iOS → iOS Native, Android → Material Design
+- Application type: Enterprise B2B → WeChat Work or Ant Design, Consumer app → iOS or Material
+
+### Step 3: Structure the Prompt
+
+Construct a comprehensive prompt with these sections:
+
+**1. Role Definition** — Define expertise relevant to the prototype:
+```
+# Role
+You are a world-class UI/UX engineer and frontend developer, specializing in [specific domain] using [technologies].
+```
+
+**2. Task Description** — State clearly what to build and the design style:
+```
+# Task
+Create a [type] prototype for [application description]. Design style must strictly follow [design system], with core keywords: [3-5 key attributes].
+```
+
+**3. Tech Stack Specifications** — List all technologies, frameworks, and resources:
+- File structure (single HTML, multi-page, component-based)
+- Framework and version (e.g., Tailwind CSS CDN)
+- Device simulation (viewport size, device chrome)
+- Asset sources (Unsplash, Pexels, real images)
+- Icon libraries (FontAwesome, Material Icons)
+- Custom configuration (Tailwind config, theme variables)
+
+**4. Visual Design Requirements** — Provide detailed specifications:
+- **(a) Color Palette:** All colors with hex codes (backgrounds, primary/accent, status, text, UI elements)
+- **(b) UI Style Characteristics:** Cards, buttons, icons, list items, shadows with exact specs
+- **(c) Layout Structure:** Each major section with heights, styles, positioning
+- **(d) Specific Page Content:** Actual content, not placeholders
+
+**5. Implementation Details** — Technical specifics:
+- Page width, centering, layout systems (Flexbox/Grid)
+- Fixed/sticky positioning, spacing scale, typography
+- Interactive states (hover, active, focus, disabled)
+- Icon sources, border/divider styling
+
+**6. Tailwind Configuration** — Custom config if using Tailwind CSS with all custom colors
+
+**7. Content Structure & Hierarchy** — Visualize page structure as a tree
+
+**8. Special Requirements** — Unique considerations (accessibility, performance, interactions)
+
+**9. Output Format** — Exact deliverable specification
+
+### Step 4: Populate with Specifics
+
+Replace all template placeholders with concrete values:
+
+- ❌ "Use blue colors" → ✅ "Primary: #3478F6 (tech blue), Link: #576B95 (link blue)"
+- ❌ "Make buttons rounded" → ✅ "Border radius: 4px (Tailwind: rounded)"
+- ❌ "Add some spacing" → ✅ "Card spacing: 12px, page margins: 16px"
+- ❌ "Display user info" → ✅ "Show username (15px bold), email (13px gray), avatar (48px circle)"
+
+**Use real content, not placeholders:**
+
+Specify all measurements, define all states (normal, hover, active, disabled, selected), include all colors with hex codes.
+
+### Step 5: Quality Assurance
+
+Verify against the checklist:
+
+**Completeness:** role, task, tech stack, colors, components, layout, content, implementation, Tailwind config, hierarchy, special requirements, output format
+
+**Clarity:** no ambiguous terms, all measurements with units, all colors with hex codes, component states described, layout relationships clear
+
+**Specificity:** design system named, viewport dimensions, typography scale, interactions documented, edge cases considered
+
+**Realism:** real content, authentic data points, practical feature set, appropriate complexity
+
+**Technical Accuracy:** valid class names, correct CDN links, proper HTML structure, feasible layouts, accessible markup
+
+### Step 6: Present and Iterate
+
+Present the generated prompt with explanation, offer refinement options, iterate based on feedback, offer to save to file.
+
+## Best Practices
+
+1. **Default to High Quality** — Generate comprehensive prompts even for minimal requirements
+2. **Use Design System Defaults Intelligently** — Apply full design system consistently
+3. **Prioritize Clarity Over Brevity** — Longer, detailed prompts produce better prototypes
+4. **Think Mobile-First** — Consider safe areas, touch targets, thumb zones, orientation
+5. **Balance Flexibility and Specificity** — Be specific about core elements, flexible about implementation details
+6. **Consider the Full User Journey** — Entry points, workflows, edge cases, exit points
+7. **Provide Context, Not Just Specs** — Explain the "why" behind design decisions
+8. **Validate Technical Feasibility** — Ensure CSS/Tailwind can achieve described designs
+9. **Make It Actionable** — Include all CDN links, imports, configs for immediate implementation
+10. **Anticipate Questions** — Address font fallbacks, image dimensions, icon usage, z-index, overflow behavior
+
+## Common Patterns
+
+### Pattern 1: Enterprise Work Dashboard (WeChat Work Style)
+- Top nav bar (44px), Quick access grid (4-col), Data cards, Feature list (64px rows), Bottom tab bar (5 tabs, 50px)
+- Tech blue (#3478F6), white cards with subtle shadows, 48px icons, right arrow indicators
+
+### Pattern 2: iOS Consumer App (iOS Native Style)
+- Large title nav (96px expanded), card-based content, system lists (44px min row), tab bar with SF Symbols
+- System blue (#007AFF), generous whitespace (20px margins), inset dividers, translucent blur
+
+### Pattern 3: Android App (Material Design Style)
+- Top app bar (56px mobile/64px tablet), FAB, card content with elevation, bottom/nav drawer
+- Bold primary (#6200EE), ripple effects, 16dp grid, Material icons (24px)
+
+### Pattern 4: Enterprise Form App (Ant Design Mobile)
+- Simple nav bar (45px), grouped form inputs, list views, fixed bottom action bar
+- Professional blue (#108EE9), dense layout, clear labels, step indicators
+
+## Troubleshooting
+
+- **Vague requirements**: Ask focused questions, provide examples, suggest design systems
+- **Mixed design styles**: Pick primary system for structure, incorporate secondary elements as accents
+- **Conflicting requirements**: Identify conflict, explain why, suggest alternatives
+- **Too many features**: Focus on primary workflow first, create separate prompts for additional features
+- **User lacks technical knowledge**: Avoid jargon, explain decisions in plain language
+- **Poor prototype results**: Review against quality checklist, ensure all colors/measurements specified
+
+---
+**Note:** This skill generates prompts for prototype creation—it does not create the prototypes themselves. The output is a comprehensive text prompt that can be provided to another AI tool, developer, or design tool to generate the actual HTML/CSS/React code.

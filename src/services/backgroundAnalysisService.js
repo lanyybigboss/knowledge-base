@@ -7,6 +7,7 @@ import storageService from './storageService'
 import taskQueueService from './taskQueueService'
 import logger from './logger'
 import { analyzeDocument, hasApiKey, isOllamaAvailable } from './aiService'
+import { generateSmartDocNumber } from '../utils/helpers'
 
 /** 扫描间隔（毫秒） */
 const SCAN_INTERVAL = 30000
@@ -14,15 +15,85 @@ const SCAN_INTERVAL = 30000
 const ANALYSIS_TIMEOUT = 120000
 /** 每次扫描最多处理的文档数 */
 const MAX_PER_SCAN = 3
+/** 连续空扫描次数阈值，达到后进入待机 */
+const EMPTY_SWEEP_THRESHOLD = 2
 
 class BackgroundAnalysisService {
   constructor() {
     this._scanTimer = null
     this._running = false
+    /** 是否处于待机模式 */
+    this._standby = false
+    /** 连续空扫描计数 */
+    this._emptySweepCount = 0
+    /** 预热中标记 */
+    this._preheating = false
     /** 正在处理的文档 ID 集合（去重） */
     this._pendingIds = new Set()
+    /** 是否正在扫描（防止 scanNow 与定时扫描并发） */
+    this._scanning = false
     /** AI 分析写入成功后回调，由 AppContext 注册，用于触发 UI 刷新 */
     this.onDocumentUpdated = null
+    /** Electron IPC 分析器就绪状态 */
+    this._analyzerReady = false
+  }
+
+  /**
+   * 检查是否在 Electron 环境且 analyzer 子进程可用
+   */
+  _isElectronAnalyzerAvailable() {
+    return !!(window.electronAPI && window.electronAPI.analyzerAnalyze)
+  }
+
+  /**
+   * 通过 Electron IPC 调用 analyzer 子进程分析文档
+   * @returns {Promise<object|null>} 分析结果或 null
+   */
+  _analyzeViaIPC(doc) {
+    return new Promise((resolve) => {
+      const timeout = setTimeout(() => {
+        cleanup()
+        resolve(null)
+      }, ANALYSIS_TIMEOUT)
+
+      let cleanup
+
+      const onResult = (msg) => {
+        if (msg.id !== doc.id) return
+        cleanup()
+        resolve(msg.data || null)
+      }
+
+      const onError = (msg) => {
+        if (msg.id !== doc.id) return
+        cleanup()
+        resolve(null)
+      }
+
+      cleanup = () => {
+        clearTimeout(timeout)
+        window.electronAPI.onAnalyzerResult(onResult)  // 返回 unsubscribe
+        window.electronAPI.onAnalyzerError(onError)
+      }
+
+      // 注册监听（返回 unsubscribe 函数）
+      const unsubResult = window.electronAPI.onAnalyzerResult(onResult)
+      const unsubError = window.electronAPI.onAnalyzerError(onError)
+      cleanup = () => {
+        clearTimeout(timeout)
+        unsubResult()
+        unsubError()
+      }
+
+      // 发送分析请求
+      window.electronAPI.analyzerAnalyze({
+        id: doc.id,
+        filePath: doc.localFilePath,
+        fileName: doc.fileName,
+        fileType: doc.fileType,
+        title: doc.title
+      })
+    })
   }
 
   /**
@@ -45,31 +116,53 @@ class BackgroundAnalysisService {
         const fileName = doc.fileName || ''
 
         if (!content || content.trim().length < 20) {
-          logger.warn(`[BackgroundAnalysis] 跳过（内容过短）: "${title || fileName}"`)
-          await storageService.updateDocument(doc.id, { _aiAttemptedAt: Date.now() })
+          logger.warn(`[BackgroundAnalysis] 跳过（内容过短，永久标记）: "${title || fileName}"`)
+          await storageService.updateDocument(doc.id, { _aiRetryCount: 99 })
           this._pendingIds.delete(doc.id)
           return null
         }
 
-        // 调用 AI 分析（带 120 秒超时）
+        // 调用 AI 分析（带超时）
         let result = null
-        try {
-          const timeoutPromise = new Promise((_, reject) =>
-            setTimeout(() => reject(new Error('AI 分析超时（120 秒）')), ANALYSIS_TIMEOUT)
-          )
-          result = await Promise.race([
-            analyzeDocument(content, title, fileName),
-            timeoutPromise
-          ])
-        } catch (err) {
-          logger.error(`[BackgroundAnalysis] AI 分析异常: "${title || fileName}"`, err.message)
+        let timeoutId = null
+
+        if (this._isElectronAnalyzerAvailable() && doc.localFilePath) {
+          // Electron 模式：通过 IPC 调用 analyzer 子进程
+          logger.info(`[BackgroundAnalysis] 使用 IPC 子进程分析: "${title || fileName}"`)
+          try {
+            result = await this._analyzeViaIPC(doc)
+          } catch (err) {
+            logger.error(`[BackgroundAnalysis] IPC 分析异常: "${title || fileName}"`, err.message)
+          }
+        } else {
+          // Vite 模式：直接调用 aiService
+          try {
+            const timeoutPromise = new Promise((_, reject) => {
+              timeoutId = setTimeout(() => reject(new Error('AI 分析超时（120 秒）')), ANALYSIS_TIMEOUT)
+            })
+            result = await Promise.race([
+              analyzeDocument(content, title, fileName),
+              timeoutPromise
+            ])
+          } catch (err) {
+            logger.error(`[BackgroundAnalysis] AI 分析异常: "${title || fileName}"`, err.message)
+          } finally {
+            if (timeoutId) clearTimeout(timeoutId)
+          }
         }
 
         if (!result || result._fallback) {
-          // 降级/失败：不设置 aiAnalyzed，避免界面显示空摘要；使用 _aiAttemptedAt 防止重复扫描
-          await storageService.updateDocument(doc.id, { _aiAttemptedAt: Date.now() })
+          // 降级/失败：累计重试次数，最多重试 3 次
+          const retryCount = (doc._aiRetryCount || 0) + 1
+          if (retryCount >= 3) {
+            // 达到最大重试次数，永久标记（99 表示永久跳过）
+            await storageService.updateDocument(doc.id, { _aiRetryCount: 99 })
+            logger.warn(`[BackgroundAnalysis] AI 分析重试 ${retryCount} 次仍失败，永久跳过: "${title || fileName}"`)
+          } else {
+            await storageService.updateDocument(doc.id, { _aiRetryCount: retryCount })
+            logger.warn(`[BackgroundAnalysis] AI 分析降级/失败（第 ${retryCount}/3 次，下次扫描重试）: "${title || fileName}"`)
+          }
           this._pendingIds.delete(doc.id)
-          logger.warn(`[BackgroundAnalysis] AI 分析降级/失败（已标记尝试，不覆蓋）: "${title || fileName}"`)
           return null
         }
 
@@ -77,8 +170,8 @@ class BackgroundAnalysisService {
         const hasValidSummary = (result.summary || '').replace(/[\s\u3000]/g, '').length >= 3
         const hasValidKeywords = (result.keywords || []).length >= 1
         if (!hasValidSummary && !hasValidKeywords) {
-          logger.warn(`[BackgroundAnalysis] 写入前校验失败（summary/keywords 均无效），标记降级: "${title || fileName}"`)
-          await storageService.updateDocument(doc.id, { _aiAttemptedAt: Date.now() })
+          logger.warn(`[BackgroundAnalysis] 写入前校验失败（summary/keywords 均无效），标记永久跳过: "${title || fileName}"`)
+          await storageService.updateDocument(doc.id, { _aiRetryCount: 99 })
           this._pendingIds.delete(doc.id)
           return null
         }
@@ -101,6 +194,7 @@ class BackgroundAnalysisService {
           tags: result.tags || [],
           entities: result.entities || { people: [], organizations: [], locations: [], dates: [] },
           smartTitle: result.smartTitle || '',
+          docNumber: result.smartTitle ? generateSmartDocNumber(result.smartTitle, doc.createdAt) : doc.docNumber,
           searchIndex: searchIndex,
           aiAnalyzed: true  // ← 最后才设 aiAnalyzed
         })
@@ -122,9 +216,15 @@ class BackgroundAnalysisService {
         return result
       } catch (error) {
         logger.error(`[BackgroundAnalysis] 处理异常: "${doc.title || doc.fileName}"`, error.message)
-        // 异常情况下标记已尝试，防止死循环，但不设 aiAnalyzed
+        // 异常情况下累计重试，不设 aiAnalyzed
         try {
-          await storageService.updateDocument(doc.id, { _aiAttemptedAt: Date.now() })
+          const retryCount = (doc._aiRetryCount || 0) + 1
+          // 达到最大重试次数（3次）后永久标记（99 表示永久跳过）
+          const newRetryCount = retryCount >= 3 ? 99 : retryCount
+          await storageService.updateDocument(doc.id, { _aiRetryCount: newRetryCount })
+          if (newRetryCount === 99) {
+            logger.warn(`[BackgroundAnalysis] 异常重试 ${retryCount} 次仍失败，永久跳过: "${doc.title || doc.fileName}"`)
+          }
         } catch (e) { /* ignore */ }
         this._pendingIds.delete(doc.id)
         throw error
@@ -132,7 +232,10 @@ class BackgroundAnalysisService {
     })
 
     this._running = true
-    logger.info('[BackgroundAnalysis] 服务已启动，扫描间隔: 30 秒')
+    this._standby = false
+    this._emptySweepCount = 0
+    this._preheating = false
+    logger.info('[BackgroundAnalysis] 服务已启动，扫描间隔: 30 秒，待机阈值: 2 次空扫描')
 
     // 首次扫描延迟 5 秒（给应用初始化留时间）
     this._scanTimer = setTimeout(() => {
@@ -157,6 +260,10 @@ class BackgroundAnalysisService {
    * 立即触发一次扫描
    */
   async scanNow() {
+    if (this._scanning) {
+      logger.debug('[BackgroundAnalysis] 扫描正在进行中，跳过手动触发')
+      return
+    }
     logger.info('[BackgroundAnalysis] 手动触发扫描')
     await this._scanLoop()
   }
@@ -165,10 +272,10 @@ class BackgroundAnalysisService {
    * 调度下一次扫描
    */
   _scheduleScan() {
-    if (!this._running) return
+    if (!this._running || this._standby) return
     this._scanTimer = setTimeout(async () => {
       await this._scanLoop()
-      if (this._running) {
+      if (this._running && !this._standby) {
         this._scheduleScan()
       }
     }, SCAN_INTERVAL)
@@ -178,43 +285,108 @@ class BackgroundAnalysisService {
    * 执行扫描：找出未分析文档并入队
    */
   async _scanLoop() {
+    if (this._scanning) return
+    this._scanning = true
     try {
-      // 优先允许 Ollama 可用时即使未配置 DeepSeek API Key 也继续扫描
-      const ollamaAvailable = await isOllamaAvailable().catch(() => false)
-      if (!hasApiKey() && !ollamaAvailable) {
-        logger.debug('[BackgroundAnalysis] 未配置 DeepSeek API Key，且 Ollama 不可用，跳过扫描')
+      // 检查是否有可用的 AI 服务（Ollama 或 DeepSeek）
+      const ollamaAvailable = await isOllamaAvailable()
+      const analyzerAvailable = this._isElectronAnalyzerAvailable()
+      if (!hasApiKey() && !ollamaAvailable && !analyzerAvailable) {
+        logger.debug('[BackgroundAnalysis] 无可用 AI 服务（Ollama/Analyzer/DeepSeek 均不可用），跳过扫描')
         return
       }
 
-      const allDocs = await storageService.getDocuments()
-      const unanalyzed = allDocs
-        .filter(doc => !doc.aiAnalyzed && !doc._aiAttemptedAt && !this._pendingIds.has(doc.id))
+      // 预热模式下不做待机判断，专心预热
+      if (this._preheating) {
+        logger.info('[BackgroundAnalysis] 预热扫描中...')
+      }
+
+      // 使用轻量级元数据扫描（不含 content 大字段），避免内存暴涨
+      const allMetaDocs = await storageService.getDocumentMetadata(500, 0)
+      const candidateIds = allMetaDocs
+        .filter(doc => !doc.aiAnalyzed && (!doc._aiRetryCount || doc._aiRetryCount < 3) && !this._pendingIds.has(doc.id))
         .slice(0, MAX_PER_SCAN)
+        .map(doc => doc.id)
 
-      if (unanalyzed.length === 0) {
+      if (candidateIds.length === 0) {
         logger.debug('[BackgroundAnalysis] 扫描完成，无待分析文档')
+
+        // 预热结束
+        if (this._preheating) {
+          this._preheating = false
+          logger.info('[BackgroundAnalysis] 预热完成，无待分析文档')
+        }
+
+        // 累计空扫描次数，达到阈值进入待机
+        this._emptySweepCount++
+        if (this._emptySweepCount >= EMPTY_SWEEP_THRESHOLD && !this._standby) {
+          this._standby = true
+          logger.info(`[BackgroundAnalysis] 连续 ${EMPTY_SWEEP_THRESHOLD} 次空扫描，进入待机模式（等待文件变动唤醒）`)
+        }
         return
       }
 
-      logger.info(`[BackgroundAnalysis] 发现 ${unanalyzed.length} 个待分析文档`)
+      // 发现文档，重置计数
+      this._emptySweepCount = 0
+      if (this._preheating) {
+        this._preheating = false
+        logger.info('[BackgroundAnalysis] 预热完成，开始处理文档')
+      }
 
-      for (const doc of unanalyzed) {
+      logger.info(`[BackgroundAnalysis] 发现 ${candidateIds.length} 个待分析文档`)
+
+      // 按需逐个加载完整文档（含 content），最多 MAX_PER_SCAN 个
+      for (const docId of candidateIds) {
         // 去重检查：如果已经在 pending 中则跳过
-        if (this._pendingIds.has(doc.id)) continue
+        if (this._pendingIds.has(docId)) continue
 
-        this._pendingIds.add(doc.id)
+        const fullDoc = await storageService.getDocument(docId)
+        if (!fullDoc) {
+          logger.warn(`[BackgroundAnalysis] 文档不存在，跳过: ${docId}`)
+          continue
+        }
+
+        this._pendingIds.add(docId)
         // 入队（不 await，让队列自行消费）
         taskQueueService.enqueue({
-          id: doc.id,
+          id: docId,
           type: 'AI_ANALYZE',
-          payload: doc
+          payload: fullDoc
         }).catch(err => {
-          logger.error(`[BackgroundAnalysis] 任务失败: "${doc.title || doc.fileName}"`, err.message)
+          // 任务被 reject（如 clearQueue），清理 pending 标记允许重新扫描
+          this._pendingIds.delete(docId)
+          logger.error(`[BackgroundAnalysis] 任务失败: "${fullDoc.title || fullDoc.fileName}"`, err.message)
         })
       }
     } catch (error) {
       logger.error('[BackgroundAnalysis] 扫描异常:', error.message)
+    } finally {
+      this._scanning = false
     }
+  }
+
+  /**
+   * 文件变动唤醒：从待机模式恢复扫描
+   * @returns {boolean} 是否成功唤醒
+   */
+  wakeUp() {
+    if (!this._running) return false
+    if (!this._standby) {
+      logger.debug('[BackgroundAnalysis] 服务未处于待机模式，无需唤醒')
+      return false
+    }
+    this._standby = false
+    this._emptySweepCount = 0
+    this._preheating = true
+    logger.info('[BackgroundAnalysis] 文件变动触发唤醒，预热中（2秒后开始扫描）...')
+    // 预热扫描：延迟 2 秒让文件系统稳定
+    setTimeout(() => {
+      if (this._running) {
+        this._preheating = false
+        this._scheduleScan()
+      }
+    }, 2000)
+    return true
   }
 }
 
