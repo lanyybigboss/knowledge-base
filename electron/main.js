@@ -1,6 +1,6 @@
 /**
  * Electron 主进程 - 知识库管理系统桌面应用入口
- * v2.0 - 修复空白页问题
+ * v2.1 - 版本互斥：多实例启动时只保留最高版本
  */
 
 const { app, BrowserWindow, ipcMain, dialog, shell, Menu, Tray, nativeImage } = require('electron')
@@ -8,6 +8,179 @@ const path = require('path')
 const fs = require('fs')
 const { execFile, spawn, fork } = require('child_process')
 const http = require('http')
+
+// ===== 版本互斥系统 =====
+// 确保同一时间只有一个版本运行：开机多个版本同时启动时，只保留最高版本
+const VERSION_LOCK_FILE = path.join(app.getPath('userData'), 'version-lock.json')
+const HEARTBEAT_INTERVAL = 10000   // 心跳间隔 10 秒
+const STALE_TIMEOUT = 30000        // 锁文件超过 30 秒无心跳视为过期
+
+let versionLockTimer = null
+let shouldExitByVersion = false
+
+/**
+ * 解析语义化版本号为可比较的数组 [major, minor, patch]
+ * @param {string} ver - 版本号字符串，如 "1.2.3"
+ * @returns {number[]}
+ */
+function parseVersion(ver) {
+  if (!ver || typeof ver !== 'string') return [0, 0, 0]
+  const parts = ver.split('.').map(n => parseInt(n, 10) || 0)
+  while (parts.length < 3) parts.push(0)
+  return parts.slice(0, 3)
+}
+
+/**
+ * 比较两个版本号
+ * @returns {number} 正数=ver1更高，0=相同，负数=ver2更高
+ */
+function compareVersions(ver1, ver2) {
+  const a = parseVersion(ver1)
+  const b = parseVersion(ver2)
+  for (let i = 0; i < 3; i++) {
+    if (a[i] !== b[i]) return a[i] - b[i]
+  }
+  return 0
+}
+
+/**
+ * 读取版本锁文件
+ * @returns {object|null}
+ */
+function readVersionLock() {
+  try {
+    if (fs.existsSync(VERSION_LOCK_FILE)) {
+      return JSON.parse(fs.readFileSync(VERSION_LOCK_FILE, 'utf-8'))
+    }
+  } catch (e) { /* 文件损坏或被锁定，视为无锁 */ }
+  return null
+}
+
+/**
+ * 写入版本锁文件
+ */
+function writeVersionLock(data) {
+  try {
+    fs.writeFileSync(VERSION_LOCK_FILE, JSON.stringify(data, null, 2), 'utf-8')
+  } catch (e) {
+    console.error('[版本互斥] 写入锁文件失败:', e.message)
+  }
+}
+
+/**
+ * 执行版本互斥检查
+ * 返回 true 表示当前实例应该退出（存在更高版本）
+ * @returns {boolean}
+ */
+function performVersionCheck() {
+  const currentVersion = app.getVersion()
+  const currentPath = process.execPath
+  const currentPid = process.pid
+  const now = Date.now()
+
+  const lock = readVersionLock()
+
+  if (!lock) {
+    // 无锁，写入自己的锁信息
+    writeVersionLock({
+      version: currentVersion,
+      path: currentPath,
+      pid: currentPid,
+      timestamp: now
+    })
+    return false
+  }
+
+  // 检查锁是否过期（持有者可能已崩溃）
+  const isStale = (now - lock.timestamp) > STALE_TIMEOUT
+  const pidExists = isProcessAlive(lock.pid)
+
+  if (isStale || !pidExists) {
+    // 锁已过期或持有进程已死，接管锁
+    writeVersionLock({
+      version: currentVersion,
+      path: currentPath,
+      pid: currentPid,
+      timestamp: now
+    })
+    return false
+  }
+
+  // 锁有效，比较版本
+  const cmp = compareVersions(currentVersion, lock.version)
+  if (cmp > 0) {
+    // 当前版本更高，接管锁（低版本实例会在心跳检测中自行退出）
+    writeVersionLock({
+      version: currentVersion,
+      path: currentPath,
+      pid: currentPid,
+      timestamp: now
+    })
+    return false
+  } else if (cmp === 0) {
+    // 版本相同，不允许重复运行
+    return true
+  } else {
+    // 当前版本更低，退出
+    return true
+  }
+}
+
+/**
+ * 启动版本锁心跳定时器
+ * 持有锁的实例定期更新时间戳；如果发现自己被更高版本取代，自行退出
+ */
+function startVersionHeartbeat() {
+  const currentVersion = app.getVersion()
+  versionLockTimer = setInterval(() => {
+    const lock = readVersionLock()
+    if (lock && lock.version !== currentVersion) {
+      // 被更高版本取代，自行退出
+      console.log(`[版本互斥] 检测到更高版本 ${lock.version}，当前 ${currentVersion} 即将退出`)
+      app.quit()
+      return
+    }
+    // 更新心跳时间戳
+    if (lock) {
+      lock.timestamp = Date.now()
+      writeVersionLock(lock)
+    }
+  }, HEARTBEAT_INTERVAL)
+}
+
+/**
+ * 停止心跳
+ */
+function stopVersionHeartbeat() {
+  if (versionLockTimer) {
+    clearInterval(versionLockTimer)
+    versionLockTimer = null
+  }
+}
+
+/**
+ * 清理版本锁文件（仅当自己是锁持有者时）
+ */
+function cleanupVersionLock() {
+  const lock = readVersionLock()
+  if (lock && lock.pid === process.pid) {
+    try {
+      fs.unlinkSync(VERSION_LOCK_FILE)
+    } catch (e) { /* ignore */ }
+  }
+}
+
+/**
+ * 检查进程是否存活（Windows 专用）
+ */
+function isProcessAlive(pid) {
+  try {
+    process.kill(pid, 0) // signal 0 不发送信号，只检测存在性
+    return true
+  } catch (e) {
+    return false
+  }
+}
 
 // ===== Ollama 自动启动 =====
 function startOllamaIfNotRunning() {
@@ -968,8 +1141,31 @@ function createWindow() {
   })
 }
 
+// ===== 版本互斥：在应用启动前检查 =====
+// 必须在 app.whenReady() 之前执行，确保低版本尽快退出
+const _versionSelfCheckPassed = (() => {
+  const currentVersion = app.getVersion()
+  const currentPath = process.execPath
+  console.log(`[版本互斥] 启动检查 - 版本: ${currentVersion}, 路径: ${currentPath}`)
+
+  if (performVersionCheck()) {
+    console.log(`[版本互斥] 存在更高版本或相同版本实例，当前实例将退出`)
+    shouldExitByVersion = true
+    // 静默退出，不弹窗
+    app.quit()
+    return false
+  }
+
+  console.log(`[版本互斥] 当前实例版本最高 (${currentVersion})，继续启动`)
+  startVersionHeartbeat()
+  return true
+})()
+
 // ===== 应用生命周期 =====
 app.whenReady().then(() => {
+  // 版本互斥检查未通过则不启动
+  if (shouldExitByVersion || !_versionSelfCheckPassed) return
+
   initStorageDirectories()
   registerIpcHandlers()
   createWindow()
@@ -1015,6 +1211,11 @@ app.whenReady().then(() => {
 // 确保真正退出时设置标志并清理
 app.on('before-quit', async () => {
   forceQuit = true
+
+  // 停止版本心跳并清理锁文件
+  stopVersionHeartbeat()
+  cleanupVersionLock()
+
   await stopAllWatchers()
   
   // 清理 pendingStrmFiles 定时器
