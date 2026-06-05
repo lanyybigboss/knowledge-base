@@ -593,6 +593,9 @@ ipcMain.handle('open-file', (_, filePath) => {
 ipcMain.handle('locate-file', (_, filePath) => {
   // 自动解析 .strm 引用文件
   const resolvedPath = resolveStrmPath(filePath)
+  if (!isPathAllowed(resolvedPath)) {
+    return { success: false, error: '无权访问该路径' }
+  }
   if (fs.existsSync(resolvedPath)) {
     shell.showItemInFolder(resolvedPath)
     return { success: true, filePath: resolvedPath }
@@ -606,11 +609,17 @@ ipcMain.handle('save-strm-file', (_, { strmFileName, originalFilePath }) => {
 })
 
 ipcMain.handle('read-strm-file', (_, strmFilePath) => {
+  if (!isPathAllowed(strmFilePath)) {
+    return { success: false, error: '无权访问该路径' }
+  }
   return readStrmFile(strmFilePath)
 })
 
 ipcMain.handle('delete-strm-file', (_, strmFilePath) => {
   try {
+    if (!isPathAllowed(strmFilePath)) {
+      return { success: false, error: '无权访问该路径' }
+    }
     if (fs.existsSync(strmFilePath)) {
       fs.unlinkSync(strmFilePath)
       return { success: true }
