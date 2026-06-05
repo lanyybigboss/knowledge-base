@@ -52,7 +52,7 @@ export default function Dashboard() {
       </div>
 
       {/* 统计卡片 */}
-      <div className="dashboard-stats-grid">
+      <div className="dashboard-stats-grid stagger-children">
         <div className="dashboard-stat-card" onClick={() => navigate('/documents')}>
           <div className="dashboard-stat-icon" style={{ background: 'var(--primary-light)' }}>
             📄
@@ -94,7 +94,7 @@ export default function Dashboard() {
         </div>
       </div>
 
-      <div className="dashboard-grid">
+      <div className="dashboard-grid stagger-children">
         {/* 知识图谱 */}
         <KnowledgeGraph onNavigate={navigate} />
 

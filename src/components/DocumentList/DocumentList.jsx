@@ -206,7 +206,7 @@ export default function DocumentList() {
         </div>
 
         {paginatedDocuments.length > 0 ? (
-          <div className="document-list-table-body">
+          <div className="document-list-table-body stagger-children">
             {paginatedDocuments.map(doc => {
               const typeInfo = getFileTypeInfo(doc.fileName || doc.title)
               return (
