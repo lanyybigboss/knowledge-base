@@ -1,13 +1,14 @@
 /**
- * AI 管理器 — 统一调度 Ollama / DeepSeek，带降级和 JSON 修复
+ * AI 管理器 — 统一调度 Ollama / MiMo / DeepSeek，带降级和 JSON 修复
  *
  * 职责：
- * - 按优先级选择适配器（Ollama → DeepSeek → fallback）
+ * - 按优先级选择适配器（Ollama → MiMo → DeepSeek → fallback）
  * - JSON 提取、修复、控制字符清洗
  * - 结果规范化和字段校验
  */
 
 import { ollamaAdapter } from './ollama'
+import { mimoAdapter } from './mimo'
 import { deepseekAdapter } from './deepseek'
 import logger from '../logger'
 
@@ -311,7 +312,7 @@ const SYSTEM_PROMPT = `你是一个专业的文档分析助手。请对以下文
 
 class AIManager {
   constructor() {
-    this.adapters = [ollamaAdapter, deepseekAdapter]
+    this.adapters = [ollamaAdapter, mimoAdapter, deepseekAdapter]
   }
 
   /**

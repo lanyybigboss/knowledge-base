@@ -11,5 +11,7 @@ export {
   isOllamaAvailable,
   invalidateOllamaHealth,
   saveApiKey,
-  hasApiKey
+  hasApiKey,
+  saveMimoApiKey,
+  hasMimoApiKey
 } from './ai/index'

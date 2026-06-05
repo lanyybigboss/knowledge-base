@@ -6,7 +6,7 @@
 import storageService from './storageService'
 import taskQueueService from './taskQueueService'
 import logger from './logger'
-import { analyzeDocument, hasApiKey, isOllamaAvailable } from './aiService'
+import { analyzeDocument, hasApiKey, isOllamaAvailable, hasMimoApiKey } from './aiService'
 import { generateSmartDocNumber } from '../utils/helpers'
 
 /** 补全空实体：如果 AI 返回的实体全空，用关键词/摘要做兜底 */
@@ -320,8 +320,8 @@ class BackgroundAnalysisService {
       // 检查是否有可用的 AI 服务（Ollama 或 DeepSeek）
       const ollamaAvailable = await isOllamaAvailable()
       const analyzerAvailable = this._isElectronAnalyzerAvailable()
-      if (!hasApiKey() && !ollamaAvailable && !analyzerAvailable) {
-        logger.debug('[BackgroundAnalysis] 无可用 AI 服务（Ollama/Analyzer/DeepSeek 均不可用），跳过扫描')
+      if (!hasApiKey() && !hasMimoApiKey() && !ollamaAvailable && !analyzerAvailable) {
+        logger.debug('[BackgroundAnalysis] 无可用 AI 服务（Ollama/Analyzer/MiMo/DeepSeek 均不可用），跳过扫描')
         return
       }
 

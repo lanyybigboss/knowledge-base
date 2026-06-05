@@ -7,7 +7,7 @@ import React, { createContext, useContext, useReducer, useCallback, useEffect, u
 import storageService from './storageService'
 import logger from './logger'
 import watcherService from './folderWatcherService'
-import { analyzeDocument, hasApiKey, isOllamaAvailable } from './aiService'
+import { analyzeDocument, hasApiKey, isOllamaAvailable, hasMimoApiKey } from './aiService'
 import backgroundAnalysisService from './backgroundAnalysisService'
 import searchService from './searchService'
 import syncService from './syncService'
@@ -77,11 +77,11 @@ export function AppProvider({ children }) {
         searchService.buildIndex(metadata)
 
         const ollamaOk = await isOllamaAvailable()
-        if (ollamaOk || hasApiKey()) {
+        if (ollamaOk || hasMimoApiKey() || hasApiKey()) {
           backgroundAnalysisService.start()
-          logger.info(`[AppContext] 后台 AI 分析服务已启动（Ollama: ${ollamaOk ? '可用' : '不可用'}, DeepSeek: ${hasApiKey() ? '已配置' : '未配置'}）`)
+          logger.info(`[AppContext] 后台 AI 分析服务已启动（Ollama: ${ollamaOk ? '可用' : '不可用'}, MiMo: ${hasMimoApiKey() ? '已配置' : '未配置'}, DeepSeek: ${hasApiKey() ? '已配置' : '未配置'}）`)
         } else {
-          logger.info('[AppContext] 无可用 AI 服务，跳过后台 AI 分析')
+          logger.info('[AppContext] 无可用 AI 服务（Ollama/MiMo/DeepSeek 均不可用），跳过后台 AI 分析')
         }
 
         logger.info(`数据加载完成: ${metadata.length} 个文档, ${categories.length} 个分类`)

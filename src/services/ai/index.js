@@ -12,3 +12,5 @@ export {
   saveApiKey,
   hasApiKey
 } from './manager'
+
+export { saveMimoApiKey, hasMimoApiKey } from './mimo'
