@@ -1,5 +1,5 @@
 /**
- * 知识图谱样式
+ * 知识图谱样式 — Warm Digital Archive
  */
 
 .kg-card {
@@ -8,7 +8,7 @@
 
 .kg-stats {
   font-size: 0.78rem;
-  color: var(--text-tertiary);
+  color: var(--text-muted);
 }
 
 .kg-loading {
@@ -27,11 +27,7 @@
   border: 2px solid var(--border-primary);
   border-top-color: var(--primary);
   border-radius: 50%;
-  animation: kgSpin 0.7s linear infinite;
-}
-
-@keyframes kgSpin {
-  to { transform: rotate(360deg); }
+  animation: spin 0.7s linear infinite;
 }
 
 .kg-canvas-wrapper {
@@ -39,8 +35,9 @@
   width: 100%;
   height: 360px;
   border-radius: var(--radius-md);
-  background: var(--bg-tertiary);
+  background: var(--bg-primary);
   overflow: hidden;
+  border: 1px solid var(--border-primary);
 }
 
 .kg-canvas-wrapper canvas {
@@ -56,29 +53,32 @@
   display: flex;
   flex-direction: column;
   gap: 2px;
-  padding: 8px 12px;
-  background: rgba(0, 0, 0, 0.85);
-  border-radius: var(--radius-sm);
+  padding: 10px 14px;
+  background: rgba(28, 26, 23, 0.92);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-primary);
   pointer-events: none;
-  backdrop-filter: blur(8px);
+  backdrop-filter: blur(12px);
 }
 
 .kg-tooltip-type {
-  font-size: 0.7rem;
+  font-size: 0.625rem;
   font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.08em;
+  color: var(--primary);
 }
 
 .kg-tooltip-name {
+  font-family: var(--font-display);
   font-size: 0.95rem;
   font-weight: 600;
-  color: #fff;
+  color: var(--text-primary);
 }
 
 .kg-tooltip-meta {
   font-size: 0.75rem;
-  color: rgba(255, 255, 255, 0.6);
+  color: var(--text-tertiary);
 }
 
 .kg-legend {
@@ -101,9 +101,10 @@
   height: 8px;
   border-radius: 50%;
   flex-shrink: 0;
+  box-shadow: 0 0 4px currentColor;
 }
 
 .kg-legend-count {
-  color: var(--text-tertiary);
+  color: var(--text-muted);
   font-size: 0.7rem;
 }

@@ -1,10 +1,11 @@
 /* ============================================
-   仪表盘样式
+   仪表盘样式 — Warm Digital Archive
    ============================================ */
 
 .dashboard {
   max-width: 1200px;
   margin: 0 auto;
+  animation: fadeInUp 0.4s ease;
 }
 
 .dashboard-header {
@@ -12,15 +13,18 @@
 }
 
 .dashboard-title {
-  font-size: 1.75rem;
+  font-family: var(--font-display);
+  font-size: 2rem;
   font-weight: 700;
   color: var(--text-primary);
   margin-bottom: var(--space-xs);
+  letter-spacing: -0.02em;
 }
 
 .dashboard-subtitle {
   color: var(--text-tertiary);
   font-size: 0.875rem;
+  letter-spacing: 0.01em;
 }
 
 /* 统计卡片网格 */
@@ -40,24 +44,50 @@
   align-items: center;
   gap: var(--space-md);
   cursor: pointer;
-  transition: all var(--transition-fast);
+  transition: all var(--transition-normal);
+  position: relative;
+  overflow: hidden;
+}
+
+/* 顶部装饰光线 */
+.dashboard-stat-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--primary), transparent);
+  opacity: 0;
+  transition: opacity var(--transition-normal);
 }
 
 .dashboard-stat-card:hover {
-  border-color: var(--border-hover);
-  transform: translateY(-2px);
-  box-shadow: var(--shadow-md);
+  border-color: var(--primary-deep);
+  transform: translateY(-3px);
+  box-shadow: var(--shadow-md), var(--shadow-glow);
 }
 
+.dashboard-stat-card:hover::before {
+  opacity: 1;
+}
+
+.dashboard-stat-card:nth-child(1) { animation: fadeInUp 0.4s ease 0ms both; }
+.dashboard-stat-card:nth-child(2) { animation: fadeInUp 0.4s ease 60ms both; }
+.dashboard-stat-card:nth-child(3) { animation: fadeInUp 0.4s ease 120ms both; }
+.dashboard-stat-card:nth-child(4) { animation: fadeInUp 0.4s ease 180ms both; }
+
 .dashboard-stat-icon {
-  width: 48px;
-  height: 48px;
+  width: 52px;
+  height: 52px;
   border-radius: var(--radius-md);
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 1.5rem;
   flex-shrink: 0;
+  background: var(--primary-light);
+  border: 1px solid var(--border-warm);
 }
 
 .dashboard-stat-info {
@@ -66,16 +96,20 @@
 }
 
 .dashboard-stat-value {
-  font-size: 1.5rem;
+  font-family: var(--font-display);
+  font-size: 1.75rem;
   font-weight: 700;
   color: var(--text-primary);
-  line-height: 1.2;
+  line-height: 1.1;
 }
 
 .dashboard-stat-label {
-  font-size: 0.8125rem;
+  font-size: 0.75rem;
   color: var(--text-tertiary);
-  margin-top: 2px;
+  margin-top: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 500;
 }
 
 /* 内容网格 */
@@ -121,7 +155,7 @@
 .dashboard-category-count {
   font-size: 0.8125rem;
   font-weight: 600;
-  color: var(--text-secondary);
+  color: var(--primary);
 }
 
 /* 文件类型列表 */
@@ -135,12 +169,17 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 8px 0;
-  border-bottom: 1px solid var(--border-primary);
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border-secondary);
+  transition: all var(--transition-fast);
 }
 
 .dashboard-type-item:last-child {
   border-bottom: none;
+}
+
+.dashboard-type-item:hover {
+  padding-left: 4px;
 }
 
 .dashboard-type-icon {
@@ -154,11 +193,11 @@
 }
 
 .dashboard-type-count {
-  font-size: 0.8125rem;
+  font-size: 0.75rem;
   font-weight: 600;
-  color: var(--text-secondary);
-  background: var(--bg-tertiary);
-  padding: 2px 8px;
+  color: var(--primary);
+  background: var(--primary-light);
+  padding: 3px 10px;
   border-radius: 9999px;
 }
 
@@ -173,7 +212,7 @@
   align-items: center;
   gap: 12px;
   padding: 10px 0;
-  border-bottom: 1px solid var(--border-primary);
+  border-bottom: 1px solid var(--border-secondary);
   cursor: pointer;
   transition: all var(--transition-fast);
 }
@@ -184,7 +223,7 @@
 
 .dashboard-recent-item:hover {
   padding-left: 8px;
-  background: var(--bg-hover);
+  background: var(--primary-light);
   border-radius: var(--radius-sm);
   margin: 0 -8px;
   padding: 10px 0 10px 8px;
@@ -232,7 +271,7 @@
   align-items: center;
   gap: 12px;
   padding: 10px 0;
-  border-bottom: 1px solid var(--border-primary);
+  border-bottom: 1px solid var(--border-secondary);
   cursor: pointer;
   transition: all var(--transition-fast);
 }
@@ -243,7 +282,7 @@
 
 .dashboard-starred-item:hover {
   padding-left: 8px;
-  background: var(--bg-hover);
+  background: var(--primary-light);
   border-radius: var(--radius-sm);
   margin: 0 -8px;
   padding: 10px 0 10px 8px;
