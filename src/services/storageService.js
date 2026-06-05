@@ -152,22 +152,29 @@ class StorageService {
 
   /**
    * 获取所有文档的实体数据（轻量级，仅用于知识图谱）
-   * @returns {Promise<Array>} 包含 id, title, entities, createdAt, category 的文档列表
+   * @returns {Promise<Array>} 包含 id, title, entities, keywords, createdAt, category 的文档列表
    */
   async getDocumentEntities() {
     try {
       const docs = await db.documents.toArray()
       return docs
-        .filter(doc => doc.entities && (
-          (doc.entities.people && doc.entities.people.length > 0) ||
-          (doc.entities.organizations && doc.entities.organizations.length > 0) ||
-          (doc.entities.locations && doc.entities.locations.length > 0) ||
-          (doc.entities.dates && doc.entities.dates.length > 0)
-        ))
+        .filter(doc => {
+          // 有实体数据
+          if (doc.entities && (
+            (doc.entities.people && doc.entities.people.length > 0) ||
+            (doc.entities.organizations && doc.entities.organizations.length > 0) ||
+            (doc.entities.locations && doc.entities.locations.length > 0) ||
+            (doc.entities.dates && doc.entities.dates.length > 0)
+          )) return true
+          // 有关键词也可以（知识图谱会用 keywords 作为 topic 节点）
+          if (doc.keywords && doc.keywords.length > 0) return true
+          return false
+        })
         .map(doc => ({
           id: doc.id,
           title: doc.title,
-          entities: doc.entities,
+          entities: doc.entities || { people: [], organizations: [], locations: [], dates: [] },
+          keywords: doc.keywords || [],
           createdAt: doc.createdAt,
           category: doc.category
         }))

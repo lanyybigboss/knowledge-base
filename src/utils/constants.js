@@ -95,7 +95,8 @@ export const ENTITY_COLORS = {
   people: { color: '#3b82f6', label: '人物', icon: '👤' },
   organizations: { color: '#10b981', label: '机构', icon: '🏢' },
   locations: { color: '#f59e0b', label: '地点', icon: '📍' },
-  dates: { color: '#8b5cf6', label: '日期', icon: '📅' }
+  dates: { color: '#8b5cf6', label: '日期', icon: '📅' },
+  topic: { color: '#ec4899', label: '主题', icon: '🏷️' }
 }
 
 // ==================== Obsidian 集成 ====================

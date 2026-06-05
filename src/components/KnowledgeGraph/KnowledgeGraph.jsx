@@ -32,6 +32,18 @@ function buildGraph(docs) {
         ids.push(key)
       }
     }
+    // 关键词作为补充节点（让更多文档能出现在图谱中）
+    for (const kw of (doc.keywords || [])) {
+      if (!kw || typeof kw !== 'string') continue
+      const name = kw.trim()
+      if (!name || name.length > 20) continue  // 跳过过长的关键词
+      const key = `topic:${name}`
+      if (!nodes.has(key)) nodes.set(key, { id: key, name, type: 'topic', docs: [], weight: 0 })
+      const n = nodes.get(key)
+      n.docs.push(doc.id)
+      n.weight++
+      ids.push(key)
+    }
     for (let i = 0; i < ids.length; i++) {
       for (let j = i + 1; j < ids.length; j++) {
         const k = [ids[i], ids[j]].sort().join('|')
@@ -153,7 +165,7 @@ export default function KnowledgeGraph({ onNavigate }) {
         const { nodes, edges } = buildGraph(docs)
         if (!nodes.length) { setState({ loading: false, nodes: [], edges: [], pos: new Map(), stats: null, legend: [] }); return }
 
-        const sorted = [...nodes].sort((a, b) => b.weight - a.weight).slice(0, 50)
+        const sorted = [...nodes].sort((a, b) => b.weight - a.weight).slice(0, 80)
         const ids = new Set(sorted.map(n => n.id))
         const fe = edges.filter(e => ids.has(e.s) && ids.has(e.t))
 

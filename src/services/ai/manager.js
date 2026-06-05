@@ -108,11 +108,13 @@ function safeParseJson(rawText) {
 
 /**
  * 从摘要/关键词中提取后备实体（AI 未返回实体时）
+ * 增强版：尝试从 keywords 中识别实体类型
  */
 function extractFallbackEntities(keywords, summary, detailedSummary) {
   const text = [summary || '', detailedSummary || ''].join(' ')
   const entities = { people: [], organizations: [], locations: [], dates: [] }
 
+  // 日期提取
   const datePatterns = [
     /\d{4}年\d{1,2}月/g, /\d{4}[-/]\d{1,2}[-/]\d{1,2}/g,
     /\d{4}[-/]\d{1,2}/g, /\d{4}年/g, /Q[1-4]/g
@@ -123,8 +125,43 @@ function extractFallbackEntities(keywords, summary, detailedSummary) {
   }
   entities.dates = [...new Set(entities.dates)].slice(0, 5)
 
-  if (keywords && keywords.length > 0 && entities.dates.length === 0) {
-    entities.dates = keywords.slice(0, 2)
+  // 从 keywords 中尝试分类
+  if (keywords && keywords.length > 0) {
+    for (const kw of keywords) {
+      if (!kw || typeof kw !== 'string') continue
+      const k = kw.trim()
+
+      // 日期模式
+      if (/\d{4}年|\d{4}[-/]\d|Q[1-4]/.test(k)) {
+        if (entities.dates.length < 5) entities.dates.push(k)
+        continue
+      }
+
+      // 组织/机构关键词（常见后缀）
+      if (/(公司|集团|机构|组织|大学|学院|研究所|研究院|部门|中心|局|院|会|基金|银行|协会|联盟|平台|实验室)/.test(k)) {
+        if (entities.organizations.length < 5) entities.organizations.push(k)
+        continue
+      }
+
+      // 地点关键词（常见后缀）
+      if (/(国家|城市|省|市|区|县|镇|村|岛|山|河|湖|海|湾|洲|地区|特区|开发区)/.test(k)) {
+        if (entities.locations.length < 5) entities.locations.push(k)
+        continue
+      }
+
+      // 人名启发（2-4字纯中文，不含常见非人名词汇）
+      if (/^[\u4e00-\u9fff]{2,4}$/.test(k) && !/(技术|系统|方法|模型|框架|平台|工具|数据|算法|服务|架构|应用|流程|方案|设计|开发|管理|分析|测试|部署|优化|集成|实现|功能|配置|环境|问题|需求|项目|版本|模块|接口|组件|规范|标准|策略|机制|流程|协议)/.test(k)) {
+        if (entities.people.length < 5) entities.people.push(k)
+        continue
+      }
+    }
+  }
+
+  // 如果实体全空，把关键词作为 organizations 兜底（让知识图谱有节点）
+  const hasAny = entities.people.length || entities.organizations.length || entities.locations.length || entities.dates.length
+  if (!hasAny && keywords && keywords.length > 0) {
+    // 将关键词前 5 个作为"主题"类组织实体
+    entities.organizations = keywords.slice(0, 5).map(k => k.trim()).filter(Boolean)
   }
 
   return entities
@@ -249,11 +286,18 @@ const SYSTEM_PROMPT = `你是一个专业的文档分析助手。请对以下文
    - 第二个标签：当前日期 + 文档类型/用途
    - 第三个标签（可选）：当前日期 + 涉及的技术/组织
 
-6. entities: 提取文档中出现的实体（按数组格式）
-   - people: 人物名称数组
-   - organizations: 组织机构数组
-   - locations: 地点名称数组
-   - dates: 重要日期数组
+6. entities: 提取文档中出现的实体（按数组格式），这是最重要的字段之一！
+   - people: 人物名称数组（包括姓名、职位称呼如"张总监"）
+   - organizations: 组织机构数组（包括公司、部门、团队、项目组、学校等）
+   - locations: 地点名称数组（包括城市、国家、区域、建筑名等）
+   - dates: 重要日期数组（格式化的日期字符串）
+   
+   【关键要求】必须尽力提取至少 2 个实体！如果文档中没有明确的人名/组织/地点，
+   可以从以下角度提取：
+   - 提及的技术团队或项目组（如"前端团队"、"Alpha项目组"）→ organizations
+   - 文档涉及的业务领域或行业（如"金融行业"、"医疗领域"）→ organizations
+   - 隐含的地点（如"国内市场"、"海外"）→ locations
+   - 任何时间相关表述（如"2024年初"、"Q3"）→ dates
 
 7. smartTitle: 为文档起一个简短的中文标题（不超过20字），要求：
    - 反映文档的核心主题

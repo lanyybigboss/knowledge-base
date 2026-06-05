@@ -9,6 +9,34 @@ import logger from './logger'
 import { analyzeDocument, hasApiKey, isOllamaAvailable } from './aiService'
 import { generateSmartDocNumber } from '../utils/helpers'
 
+/** 补全空实体：如果 AI 返回的实体全空，用关键词/摘要做兜底 */
+function ensureEntities(result) {
+  const e = result.entities || {}
+  const hasAny = (e.people && e.people.length) || (e.organizations && e.organizations.length) ||
+    (e.locations && e.locations.length) || (e.dates && e.dates.length)
+  if (hasAny) return result
+
+  // entities 全空，用 keywords 做兜底
+  const fallback = { people: [], organizations: [], locations: [], dates: [] }
+  if (result.keywords && result.keywords.length > 0) {
+    for (const kw of result.keywords) {
+      if (!kw || typeof kw !== 'string') continue
+      const k = kw.trim()
+      if (/(公司|集团|机构|组织|大学|学院|研究所|研究院|部门|中心|局|院|会|基金|银行|协会|联盟|平台|实验室|团队|项目组)/.test(k)) {
+        if (fallback.organizations.length < 5) fallback.organizations.push(k)
+      } else if (/(国家|城市|省|市|区|县|地区|海外|国内|市场|领域)/.test(k)) {
+        if (fallback.locations.length < 5) fallback.locations.push(k)
+      } else if (/\d{4}年|\d{4}[-/]\d|Q[1-4]/.test(k)) {
+        if (fallback.dates.length < 5) fallback.dates.push(k)
+      } else {
+        if (fallback.organizations.length < 5) fallback.organizations.push(k)
+      }
+    }
+  }
+  result.entities = fallback
+  return result
+}
+
 /** 扫描间隔（毫秒） */
 const SCAN_INTERVAL = 30000
 /** AI 分析超时时间（毫秒） */
@@ -184,7 +212,8 @@ class BackgroundAnalysisService {
           ...(result.keywords || [])
         ].filter(Boolean).join(' ').substring(0, 512)
 
-        // AI成功 → JSON合法 → 字段校验 → 写入summary/tags → 最后 aiAnalyzed=true
+        // AI成功 → JSON合法 → 字段校验 → 补全实体 → 写入summary/tags → 最后 aiAnalyzed=true
+        ensureEntities(result)
         logger.info(`[AI] storage_write_start | id=${doc.id} | title="${title || fileName}" | summary="${(result.summary || '').substring(0, 40)}" | keywords=${JSON.stringify(result.keywords || [])} | category="${result.category}"`)
         await storageService.updateDocument(doc.id, {
           category: result.category || 'other',
