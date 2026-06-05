@@ -153,8 +153,9 @@ class SyncService {
 
     this._syncing = true
     try {
-      const [documents, categories, settings, numberingRules] = await Promise.all([
-        storageService.getDocuments(),
+      // 推送元数据（不含 content 字段），大幅减少序列化体积
+      const [metadata, categories, settings, numberingRules] = await Promise.all([
+        storageService.getDocumentMetadata(0, 0),
         storageService.getCategories(),
         storageService.getSettings(),
         storageService.getNumberingRules()
@@ -165,7 +166,7 @@ class SyncService {
       delete cleanSettings._syncUpdatedAt
 
       const syncData = {
-        documents,
+        documents: metadata,
         categories,
         numberingRules,
         settings: cleanSettings,
@@ -179,7 +180,7 @@ class SyncService {
         this._dirty = false
         this._lastPushTime = Date.now()
         await storageService.updateSettings({ _syncUpdatedAt: updatedAt })
-        logger.debug(`[SyncService] 推送成功: ${documents.length} 文档, ${categories.length} 分类`)
+        logger.debug(`[SyncService] 推送成功: ${metadata.length} 文档(元数据), ${categories.length} 分类`)
       } else {
         logger.warn(`[SyncService] 推送失败: ${result?.error || '未知错误'}`)
       }
@@ -226,6 +227,14 @@ class SyncService {
       }
 
       logger.info(`[SyncService] 检测到远端变更，正在拉取: ${_updatedAt}`)
+
+      // 本地脏数据保护：如果本地有未推送的修改，先推送再拉取，避免覆盖
+      if (this._dirty) {
+        logger.info('[SyncService] 本地有未推送变更，先推送再拉取')
+        this._syncing = false
+        await this._pushToRemote()
+        return
+      }
 
       await storageService.replaceAllDocuments(documents)
       await storageService.replaceAllCategories(categories)

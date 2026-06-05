@@ -39,6 +39,7 @@ export const ACTIONS = {
   SET_LOADING: 'SET_LOADING',
   SET_NOTIFICATION: 'SET_NOTIFICATION',
   CLEAR_NOTIFICATION: 'CLEAR_NOTIFICATION',
+  REMOVE_NOTIFICATION: 'REMOVE_NOTIFICATION',
   SET_SELECTED_IDS: 'SET_SELECTED_IDS',
   TOGGLE_SIDEBAR: 'TOGGLE_SIDEBAR',
   TOGGLE_LOG_VIEWER: 'TOGGLE_LOG_VIEWER'
@@ -174,9 +175,12 @@ export function appReducer(state, action) {
       return { ...state, loading: action.payload }
 
     case ACTIONS.SET_NOTIFICATION:
-      return { ...state, notification: action.payload }
+      return { ...state, notification: { ...action.payload, id: action.payload.id || `notif-${Date.now()}-${Math.random().toString(36).slice(2, 6)}` } }
 
     case ACTIONS.CLEAR_NOTIFICATION:
+      return { ...state, notification: null }
+
+    case ACTIONS.REMOVE_NOTIFICATION:
       return { ...state, notification: null }
 
     case ACTIONS.SET_SELECTED_IDS:

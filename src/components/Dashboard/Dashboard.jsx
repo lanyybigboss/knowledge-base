@@ -5,9 +5,9 @@
 import React from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useApp } from '../../services/AppContext'
-import { formatFileSize, formatDate, getFileTypeInfo } from '../../utils/helpers'
-import { PRESET_CATEGORIES } from '../../utils/constants'
+import { formatFileSize, formatDate, getFileTypeInfo, getCategoryName, getCategoryColor, getCategoryIcon } from '../../utils/helpers'
 import KnowledgeGraph from '../KnowledgeGraph/KnowledgeGraph'
+import { FileText, HardDrive, Folder, Bot, Star } from 'lucide-react'
 import './Dashboard.css'
 
 export default function Dashboard() {
@@ -15,22 +15,6 @@ export default function Dashboard() {
   const navigate = useNavigate()
 
   const { totalDocs, totalSize, categoryDistribution, typeDistribution, recentDocuments } = statistics
-
-  // 获取分类名称
-  const getCategoryName = (catId) => {
-    const preset = PRESET_CATEGORIES.find(c => c.id === catId)
-    return preset ? preset.name : catId
-  }
-
-  const getCategoryColor = (catId) => {
-    const preset = PRESET_CATEGORIES.find(c => c.id === catId)
-    return preset ? preset.color : '#6b7280'
-  }
-
-  const getCategoryIcon = (catId) => {
-    const preset = PRESET_CATEGORIES.find(c => c.id === catId)
-    return preset ? preset.icon : '📁'
-  }
 
   // 按文档数量排序的分类
   const sortedCategories = Object.entries(categoryDistribution)
@@ -55,7 +39,7 @@ export default function Dashboard() {
       <div className="dashboard-stats-grid stagger-children">
         <div className="dashboard-stat-card" onClick={() => navigate('/documents')}>
           <div className="dashboard-stat-icon" style={{ background: 'var(--primary-light)' }}>
-            📄
+            <FileText size={20} />
           </div>
           <div className="dashboard-stat-info">
             <span className="dashboard-stat-value">{totalDocs}</span>
@@ -65,7 +49,7 @@ export default function Dashboard() {
 
         <div className="dashboard-stat-card">
           <div className="dashboard-stat-icon" style={{ background: 'var(--success-bg)' }}>
-            💾
+            <HardDrive size={20} />
           </div>
           <div className="dashboard-stat-info">
             <span className="dashboard-stat-value">{formatFileSize(totalSize)}</span>
@@ -75,7 +59,7 @@ export default function Dashboard() {
 
         <div className="dashboard-stat-card" onClick={() => navigate('/categories')}>
           <div className="dashboard-stat-icon" style={{ background: 'var(--warning-bg)' }}>
-            📂
+            <Folder size={20} />
           </div>
           <div className="dashboard-stat-info">
             <span className="dashboard-stat-value">{Object.keys(categoryDistribution).length}</span>
@@ -85,11 +69,13 @@ export default function Dashboard() {
 
         <div className="dashboard-stat-card" onClick={() => navigate('/statistics')}>
           <div className="dashboard-stat-icon" style={{ background: 'var(--info-bg)' }}>
-            📊
+            <Bot size={20} />
           </div>
           <div className="dashboard-stat-info">
-            <span className="dashboard-stat-value">{documents.length > 0 ? '活跃' : '待启动'}</span>
-            <span className="dashboard-stat-label">系统状态</span>
+            <span className="dashboard-stat-value">
+              {documents.length > 0 ? Math.round((documents.filter(d => d.aiAnalyzed).length / documents.length) * 100) + '%' : '-'}
+            </span>
+            <span className="dashboard-stat-label">AI 分析完成率</span>
           </div>
         </div>
       </div>
@@ -209,7 +195,7 @@ export default function Dashboard() {
         {/* 星标文档 */}
         <div className="card">
           <div className="card-header">
-            <h3 className="card-title">⭐ 星标文档</h3>
+            <h3 className="card-title"><Star size={16} /> 星标文档</h3>
           </div>
           <div className="dashboard-starred-list">
             {starredDocuments.length > 0 ? starredDocuments.slice(0, 5).map(doc => {

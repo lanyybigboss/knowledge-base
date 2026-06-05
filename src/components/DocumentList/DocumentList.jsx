@@ -5,9 +5,10 @@
 import React, { useState, useCallback, useMemo } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useApp } from '../../services/AppContext'
-import { formatFileSize, formatDate, getFileTypeInfo } from '../../utils/helpers'
+import { formatFileSize, formatDate, getFileTypeInfo, getCategoryName, getCategoryColor } from '../../utils/helpers'
 import { PRESET_CATEGORIES, SORT_OPTIONS, PAGE_SIZE_OPTIONS } from '../../utils/constants'
 import Modal from '../Common/Modal'
+import { Star, Eye, Trash2, Upload, RefreshCw } from 'lucide-react'
 import './DocumentList.css'
 
 export default function DocumentList() {
@@ -18,6 +19,7 @@ export default function DocumentList() {
     sort,
     pageSize,
     selectedIds,
+    categories,
     setFilters,
     setSort,
     setPage,
@@ -71,21 +73,14 @@ export default function DocumentList() {
     setSelectAll(false)
   }, [selectedIds, deleteDocuments, setSelectAll])
 
-  const getCategoryName = useCallback((catId) => {
-    const preset = PRESET_CATEGORIES.find(c => c.id === catId)
-    return preset ? preset.name : catId
-  }, [])
-
-  const getCategoryColor = useCallback((catId) => {
-    const preset = PRESET_CATEGORIES.find(c => c.id === catId)
-    return preset ? preset.color : '#6b7280'
-  }, [])
-
   // 获取所有分类（预设 + 自定义）- 使用 useMemo 缓存
   const allCategories = useMemo(() => [
     { id: 'all', name: '全部分类' },
-    ...PRESET_CATEGORIES.map(c => ({ id: c.id, name: c.name }))
-  ], [])
+    ...PRESET_CATEGORIES.map(c => ({ id: c.id, name: c.name })),
+    ...categories
+      .filter(c => !PRESET_CATEGORIES.some(p => p.id === c.id))
+      .map(c => ({ id: c.id, name: c.name }))
+  ], [categories])
 
   // 获取所有文件类型 - 使用 useMemo 缓存
   const allTypes = useMemo(() => [
@@ -128,15 +123,15 @@ export default function DocumentList() {
             disabled={isRefreshing}
             title="从数据库重新加载文档列表，同步后台 AI 分析结果"
           >
-            {isRefreshing ? '⏳ 刷新中...' : '🔄 刷新'}
+            {isRefreshing ? '⏳ 刷新中...' : <><RefreshCw size={14} /> 刷新</>}
           </button>
           {selectedIds.length > 0 && (
             <button className="btn btn-danger btn-sm" onClick={handleBatchDelete}>
-              🗑️ 删除 {selectedIds.length} 个
+              <Trash2 size={14} /> 删除 {selectedIds.length} 个
             </button>
           )}
           <button className="btn btn-primary" onClick={() => navigate('/upload')}>
-            📤 上传文档
+            <Upload size={14} /> 上传文档
           </button>
         </div>
       </div>
@@ -290,14 +285,14 @@ export default function DocumentList() {
                       onClick={() => toggleStar(doc.id)}
                       title={doc.starred ? '取消星标' : '标记星标'}
                     >
-                      {doc.starred ? '⭐' : '☆'}
+                      <Star size={14} fill={doc.starred ? 'currentColor' : 'none'} />
                     </button>
                     <button
                       className="btn btn-icon btn-ghost"
                       onClick={() => navigate(`/documents/${doc.id}`)}
                       title="查看详情"
                     >
-                      👁️
+                      <Eye size={14} />
                     </button>
                   </div>
                 </div>
@@ -319,7 +314,7 @@ export default function DocumentList() {
                 style={{ marginTop: '16px' }}
                 onClick={() => navigate('/upload')}
               >
-                📤 上传文档
+                <Upload size={14} /> 上传文档
               </button>
             )}
           </div>

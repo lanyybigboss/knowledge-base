@@ -252,6 +252,10 @@ export function useAppActions(dispatch, showNotification) {
     dispatch({ type: ACTIONS.SET_PAGE, payload: page })
   }, [dispatch])
 
+  const setPageSize = useCallback((size) => {
+    dispatch({ type: ACTIONS.SET_PAGE_SIZE, payload: size })
+  }, [dispatch])
+
   const setSelectedIds = useCallback((ids) => {
     dispatch({ type: ACTIONS.SET_SELECTED_IDS, payload: ids })
   }, [dispatch])
@@ -269,7 +273,7 @@ export function useAppActions(dispatch, showNotification) {
     addCategory, updateCategory, deleteCategory,
     updateSettings, updateNumberingRules,
     loadData, exportData, importData, clearAllData,
-    setSearch, setFilters, setSort, setPage, setSelectedIds,
+    setSearch, setFilters, setSort, setPage, setPageSize, setSelectedIds,
     toggleSidebar, toggleLogViewer
   }
 }

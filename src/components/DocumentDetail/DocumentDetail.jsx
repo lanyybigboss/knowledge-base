@@ -3,16 +3,16 @@
  * 支持打开文件、定位文件位置
  */
 
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useApp } from '../../services/AppContext'
-import { formatFileSize, formatDate, getFileTypeInfo } from '../../utils/helpers'
-import { PRESET_CATEGORIES } from '../../utils/constants'
+import { formatFileSize, formatDate, getFileTypeInfo, getCategoryName, getCategoryColor } from '../../utils/helpers'
 import logger from '../../services/logger'
 import { analyzeDocument, hasApiKey, isOllamaAvailable } from '../../services/aiService'
 import apiService from '../../services/apiService'
 import storageService from '../../services/storageService'
 import Modal from '../Common/Modal'
+import { Search, Star, Pencil, Trash2, FolderOpen, ExternalLink, FileText, Tag, Bookmark, Bot, Info } from 'lucide-react'
 import './DocumentDetail.css'
 
 export default function DocumentDetail() {
@@ -25,13 +25,20 @@ export default function DocumentDetail() {
   const [analyzing, setAnalyzing] = useState(false)
   const [analyzeError, setAnalyzeError] = useState('')
 
+  // 记录浏览次数（组件顶层调用，不违反 hooks 规则）
+  useEffect(() => {
+    if (id) {
+      storageService.incrementViewCount(id).catch(() => {})
+    }
+  }, [id])
+
   /**
    * 从 PDF 提取文本（用于现有文档重新AI分析）
    */
   async function extractPdfTextFromFile(filePath) {
     try {
       const pdfjsLib = await import('pdfjs-dist')
-      pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.mjs`
+      pdfjsLib.GlobalWorkerOptions.workerSrc = `/pdf.worker.min.mjs`
       
       // 通过 fetch 获取本地 PDF 文件
       const response = await fetch(filePath)
@@ -52,8 +59,27 @@ export default function DocumentDetail() {
     }
   }
 
+  const doc = documents.find(d => d.id === id)
+
+  if (!doc) {
+    return (
+      <div className="empty-state" style={{ padding: '80px 0' }}>
+        <div className="empty-state-icon"><Search size={32} /></div>
+        <div className="empty-state-title">文档未找到</div>
+        <div className="empty-state-description">该文档可能已被删除或不存在</div>
+        <button
+          className="btn btn-primary"
+          style={{ marginTop: '16px' }}
+          onClick={() => navigate('/documents')}
+        >
+          返回文档列表
+        </button>
+      </div>
+    )
+  }
+
   /**
-   * AI 重新分析文档
+   * AI 重新分析文档（doc 已确认存在）
    */
   const handleReAnalyze = async () => {
     const ollamaReady = await isOllamaAvailable()
@@ -131,7 +157,7 @@ export default function DocumentDetail() {
   }
 
   /**
-   * 重试 AI 分析（重置状态，让后台服务重新分析）
+   * 重试 AI 分析（重置状态，让后台服务重新分析）— doc 已确认存在
    */
   const handleRetryAiAnalysis = async () => {
     if (!window.confirm('确定要重置此文档的 AI 分析状态吗？\n\n重置后，文档将在下次扫描时重新尝试 AI 分析。')) {
@@ -149,34 +175,7 @@ export default function DocumentDetail() {
     }
   }
 
-  const doc = documents.find(d => d.id === id)
-
-  if (!doc) {
-    return (
-      <div className="empty-state" style={{ padding: '80px 0' }}>
-        <div className="empty-state-icon">🔍</div>
-        <div className="empty-state-title">文档未找到</div>
-        <div className="empty-state-description">该文档可能已被删除或不存在</div>
-        <button
-          className="btn btn-primary"
-          style={{ marginTop: '16px' }}
-          onClick={() => navigate('/documents')}
-        >
-          返回文档列表
-        </button>
-      </div>
-    )
-  }
-
   const typeInfo = getFileTypeInfo(doc.fileName || doc.title)
-  const getCategoryName = (catId) => {
-    const preset = PRESET_CATEGORIES.find(c => c.id === catId)
-    return preset ? preset.name : catId
-  }
-  const getCategoryColor = (catId) => {
-    const preset = PRESET_CATEGORIES.find(c => c.id === catId)
-    return preset ? preset.color : '#6b7280'
-  }
 
   const handleDelete = () => {
     deleteDocument(doc.id)
@@ -320,7 +319,7 @@ export default function DocumentDetail() {
                 className={`btn btn-ghost btn-sm ${doc.starred ? 'starred' : ''}`}
                 onClick={() => toggleStar(doc.id)}
               >
-                {doc.starred ? '⭐ 已星标' : '☆ 标记星标'}
+                {doc.starred ? <><Star size={14} fill="currentColor" className="starred" /> 已星标</> : <><Star size={14} /> 标记星标</>}
               </button>
               {isEditing ? (
                 <>
@@ -333,14 +332,14 @@ export default function DocumentDetail() {
                 </>
               ) : (
                 <button className="btn btn-secondary btn-sm" onClick={startEditing}>
-                  ✏️ 编辑
+                  <Pencil size={14} /> 编辑
                 </button>
               )}
               <button
                 className="btn btn-danger btn-sm"
                 onClick={() => setShowDeleteModal(true)}
               >
-                🗑️ 删除
+                <Trash2 size={14} /> 删除
               </button>
 
               {/* AI 分析失败时的重试按钮 */}
@@ -360,10 +359,10 @@ export default function DocumentDetail() {
           <div className="card">
             <div className="document-detail-file-actions">
               <button className="btn btn-primary" onClick={handleOpenFile}>
-                📂 打开文件
+                <FolderOpen size={14} /> 打开文件
               </button>
               <button className="btn btn-secondary" onClick={handleLocateFile}>
-                📁 定位文件位置
+                <ExternalLink size={14} /> 定位文件位置
               </button>
               <span className="document-detail-file-path">
                 {doc.fileName || `${doc.title}.${doc.fileType || 'txt'}`}
@@ -380,7 +379,7 @@ export default function DocumentDetail() {
           <div className="card">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-md)' }}>
               <h3 className="card-title" style={{ margin: 0 }}>
-                📝 内容摘要
+                <FileText size={16} /> 内容摘要
               </h3>
               <button
                 className="btn btn-ghost btn-sm"
@@ -388,7 +387,7 @@ export default function DocumentDetail() {
                 disabled={analyzing}
                 title="调用 AI 重新分析文档内容"
               >
-                {analyzing ? '⏳ 分析中...' : '🤖 AI 重新分析'}
+                {analyzing ? '⏳ 分析中...' : <><Bot size={14} /> AI 重新分析</>}
               </button>
             </div>
             {analyzeError && (
@@ -504,7 +503,7 @@ export default function DocumentDetail() {
         <div className="document-detail-sidebar">
           <div className="card">
             <h3 className="card-title" style={{ marginBottom: 'var(--space-md)' }}>
-              ℹ️ 详细信息
+              <Info size={16} /> 详细信息
             </h3>
             <div className="document-detail-info-list">
               <div className="document-detail-info-item">
@@ -545,7 +544,7 @@ export default function DocumentDetail() {
           {/* 关键词 */}
           <div className="card">
             <h3 className="card-title" style={{ marginBottom: 'var(--space-md)' }}>
-              🏷️ 关键词
+              <Tag size={16} /> 关键词
             </h3>
             {isEditing ? (
               <input
@@ -574,7 +573,7 @@ export default function DocumentDetail() {
           {/* 标签 */}
           <div className="card">
             <h3 className="card-title" style={{ marginBottom: 'var(--space-md)' }}>
-              📌 标签
+              <Bookmark size={16} /> 标签
             </h3>
             {isEditing ? (
               <input

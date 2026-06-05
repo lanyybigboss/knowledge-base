@@ -36,8 +36,8 @@ async function extractPdfText(file, onProgress) {
   try {
     const pdfjsLib = await import('pdfjs-dist')
     
-    // 设置 worker（使用 CDN 版本，避免 Vite 打包 worker 文件的问题）
-    pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.mjs`
+    // 设置 worker（优先使用本地文件，离线环境也可用）
+    pdfjsLib.GlobalWorkerOptions.workerSrc = `/pdf.worker.min.mjs`
 
     const arrayBuffer = await file.arrayBuffer()
     const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise
@@ -90,7 +90,7 @@ async function extractPdfText(file, onProgress) {
  * 然后将 workerPath 改为 '/tesseract-worker.min.js'
  */
 const TESSERACT_OPTIONS = {
-  workerPath: 'https://cdn.jsdelivr.net/npm/tesseract.js@7/dist/worker.min.js'
+  workerPath: '/tesseract-worker.min.js'
 }
 
 async function ocrPdfPages(pdf, fileName, totalPages, onProgress) {

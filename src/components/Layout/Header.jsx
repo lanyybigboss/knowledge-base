@@ -6,6 +6,7 @@ import React, { useState, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useApp } from '../../services/AppContext'
 import { debounce } from '../../utils/helpers'
+import { Search, X, ClipboardList, Upload } from 'lucide-react'
 import './Layout.css'
 
 export default function Header({ onToggleSidebar }) {
@@ -48,15 +49,23 @@ export default function Header({ onToggleSidebar }) {
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
 
-  // 获取搜索建议
+  // 获取搜索建议（匹配更多字段，与 QuickSearch 一致）
   const getSearchSuggestions = () => {
     if (!localSearch) return []
     const query = localSearch.toLowerCase()
     return documents
-      .filter(doc => 
-        doc.title.toLowerCase().includes(query) ||
-        (doc.docNumber && doc.docNumber.toLowerCase().includes(query))
-      )
+      .filter(doc => {
+        const title = (doc.title || '').toLowerCase()
+        const docNumber = (doc.docNumber || '').toLowerCase()
+        const smartTitle = (doc.smartTitle || '').toLowerCase()
+        const keywords = (doc.keywords || []).join(' ').toLowerCase()
+        const fileName = (doc.fileName || '').toLowerCase()
+        return title.includes(query) ||
+               docNumber.includes(query) ||
+               smartTitle.includes(query) ||
+               keywords.includes(query) ||
+               fileName.includes(query)
+      })
       .slice(0, 5)
   }
 
@@ -76,7 +85,7 @@ export default function Header({ onToggleSidebar }) {
 
       <div className="header-center" ref={searchRef}>
         <div className="header-search">
-          <span className="header-search-icon">🔍</span>
+          <span className="header-search-icon"><Search size={16} /></span>
           <input
             type="text"
             className="header-search-input"
@@ -94,7 +103,7 @@ export default function Header({ onToggleSidebar }) {
                 setShowSearchResults(false)
               }}
             >
-              ✕
+              <X size={14} />
             </button>
           )}
         </div>
@@ -127,13 +136,13 @@ export default function Header({ onToggleSidebar }) {
           }}
           title="查看运行日志 (Ctrl+Shift+L)"
         >
-          📋 日志
+          <ClipboardList size={14} /> 日志
         </button>
         <button
           className="btn btn-primary btn-sm"
           onClick={() => navigate('/upload')}
         >
-          📤 上传文档
+          <Upload size={14} /> 上传文档
         </button>
       </div>
     </header>

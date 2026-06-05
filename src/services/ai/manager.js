@@ -395,7 +395,18 @@ export function hasApiKey() {
  * @returns {Promise<object>} 分析结果（永不返回 null，失败返回 _fallback: true）
  */
 export async function analyzeDocument(content, title, fileName) {
-  const userPrompt = `文档标题：${title || fileName || '未命名文档'}\n文档内容：${(content || '').substring(0, 4000)}`
+  const contentText = content || ''
+  // 分段策略：长文档分段提取，避免关键信息截断
+  let truncatedContent
+  if (contentText.length <= 8000) {
+    truncatedContent = contentText
+  } else {
+    // 取前 5000 字 + 后 3000 字，中间标记省略
+    truncatedContent = contentText.substring(0, 5000) +
+      '\n\n[...文档中间部分已省略...]\n\n' +
+      contentText.substring(contentText.length - 3000)
+  }
+  const userPrompt = `文档标题：${title || fileName || '未命名文档'}\n文档内容：${truncatedContent}`
 
   try {
     const { parsed, adapter, error } = await aiManager.chat(SYSTEM_PROMPT, userPrompt)

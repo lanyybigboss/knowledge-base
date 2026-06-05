@@ -627,12 +627,11 @@ table {
 }
 
 .input-group label {
-  font-size: 0.8125rem;
+  font-size: 0.6875rem;
   font-weight: 500;
   color: var(--text-secondary);
   letter-spacing: 0.03em;
   text-transform: uppercase;
-  font-size: 0.6875rem;
 }
 
 .input-group input,
@@ -694,12 +693,25 @@ table {
   animation: fadeIn 0.3s ease;
 }
 
-/* 通知 — 弹簧弹入 + 退出 */
-.notification {
+/* 通知堆叠容器 */
+.notification-stack {
   position: fixed;
   top: var(--space-lg);
   right: var(--space-lg);
   z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 420px;
+  pointer-events: none;
+}
+
+.notification-stack > * {
+  pointer-events: auto;
+}
+
+/* 通知 — 弹簧弹入 + 退出 */
+.notification {
   display: flex;
   align-items: center;
   gap: 12px;
@@ -708,9 +720,42 @@ table {
   font-size: 0.875rem;
   font-weight: 500;
   box-shadow: var(--shadow-lg);
-  animation: notificationIn 0.5s var(--ease-out-back);
-  max-width: 400px;
+  max-width: 420px;
   backdrop-filter: blur(12px);
+}
+
+.notification-enter {
+  animation: notificationIn 0.5s var(--ease-out-back);
+}
+
+.notification-exit {
+  animation: notificationOut 0.3s var(--ease-out-expo) forwards;
+}
+
+.notification-icon {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+}
+
+.notification-message {
+  flex: 1;
+}
+
+.notification-close {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  color: inherit;
+  opacity: 0.6;
+  cursor: pointer;
+  padding: 2px;
+  display: flex;
+  align-items: center;
+}
+
+.notification-close:hover {
+  opacity: 1;
 }
 
 .notification-success {
@@ -741,6 +786,7 @@ table {
   align-items: center;
   justify-content: center;
   z-index: 100;
+  animation: fadeIn 0.2s ease;
   animation: fadeIn var(--duration-fast) var(--ease-out-expo);
 }
 
@@ -907,6 +953,19 @@ table {
   }
 }
 
+@keyframes notificationOut {
+  from {
+    transform: translateX(0) scale(1);
+    opacity: 1;
+    filter: blur(0);
+  }
+  to {
+    transform: translateX(120%) scale(0.8);
+    opacity: 0;
+    filter: blur(4px);
+  }
+}
+
 /* 模态框弹簧弹入 */
 @keyframes modalIn {
   from {
@@ -1046,23 +1105,7 @@ input:focus, textarea:focus, select:focus {
               transform var(--duration-normal) var(--ease-spring);
 }
 
-/* 标签悬浮动效 */
-.tag {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 3px 10px;
-  background: var(--bg-tertiary);
-  border: 1px solid var(--border-primary);
-  border-radius: var(--radius-sm);
-  font-size: 0.75rem;
-  color: var(--text-secondary);
-  cursor: pointer;
-  transition:
-    all var(--duration-fast) var(--ease-out-expo),
-    transform var(--duration-fast) var(--ease-spring);
-}
-
+/* 标签悬浮动效（覆盖基础 .tag 样式，增加动效） */
 .tag:hover {
   background: var(--primary-light);
   border-color: var(--primary-deep);
@@ -1074,18 +1117,7 @@ input:focus, textarea:focus, select:focus {
   transform: scale(0.95);
 }
 
-/* 徽章微动效 */
-.badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 3px 10px;
-  border-radius: 9999px;
-  font-size: 0.75rem;
-  font-weight: 500;
-  letter-spacing: 0.02em;
-  transition: transform var(--duration-fast) var(--ease-spring);
-}
+/* 徽章微动效（覆盖基础 .badge 样式，增加动效） */
 
 .badge:hover {
   transform: scale(1.08);

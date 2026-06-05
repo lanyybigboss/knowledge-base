@@ -22,6 +22,10 @@ const OLLAMA_BASE_URL = 'http://localhost:11434'
 const OLLAMA_MODEL = 'qwen2.5:7b-instruct-q4_K_M'
 const AI_TIMEOUT = 180000
 
+// DeepSeek API 配置（降级方案）
+const DEEPSEEK_API_URL = 'https://api.deepseek.com/v1/chat/completions'
+const DEEPSEEK_MODEL = 'deepseek-chat'
+
 // ===== 日志（子进程用 console，因为没有 logger 模块） =====
 function log(level, ...args) {
   const ts = new Date().toISOString()
@@ -161,6 +165,81 @@ async function callOllama(systemPrompt, userPrompt) {
   }
 }
 
+/**
+ * DeepSeek API 调用（Ollama 不可用时的降级方案）
+ */
+async function callDeepSeek(systemPrompt, userPrompt) {
+  const apiKey = process.env.DEEPSEEK_API_KEY || ''
+  if (!apiKey) throw new Error('DeepSeek API Key 未配置')
+
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), AI_TIMEOUT)
+
+  try {
+    const response = await fetch(DEEPSEEK_API_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`
+      },
+      body: JSON.stringify({
+        model: DEEPSEEK_MODEL,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt + '\n\n请严格返回 JSON 格式，不要包含任何其他文字。' }
+        ],
+        temperature: 0.3,
+        max_tokens: 2000
+      }),
+      signal: controller.signal
+    })
+
+    if (!response.ok) throw new Error(`DeepSeek HTTP ${response.status}`)
+
+    const data = await response.json()
+    return data.choices?.[0]?.message?.content || ''
+  } finally {
+    clearTimeout(timeoutId)
+  }
+}
+
+/**
+ * MiMo Token Plan 调用（第二降级方案）
+ */
+async function callMimo(systemPrompt, userPrompt) {
+  const apiKey = process.env.MIMO_API_KEY || ''
+  if (!apiKey) throw new Error('MiMo API Key 未配置')
+
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), AI_TIMEOUT)
+
+  try {
+    const response = await fetch('https://token-plan-cn.xiaomimimo.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`
+      },
+      body: JSON.stringify({
+        model: 'mimo-v2-flash',
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt }
+        ],
+        temperature: 0.3
+      }),
+      signal: controller.signal
+    })
+
+    if (!response.ok) throw new Error(`MiMo HTTP ${response.status}`)
+
+    const data = await response.json()
+    return data.choices?.[0]?.message?.content || ''
+  } finally {
+    clearTimeout(timeoutId)
+  }
+}
+
 function safeParseJson(rawText) {
   // 提取 JSON
   let cleaned = rawText.trim()
@@ -217,18 +296,52 @@ async function handleAnalyze(msg) {
       return
     }
 
-    // 阶段 2：AI 分析
-    report(id, 'analyzing', 0, '调用 Ollama AI 分析')
-    const userPrompt = `文档标题：${title || fileName}\n文档内容：${content.substring(0, 4000)}`
+    // 阶段 2：AI 分析（Ollama → MiMo → DeepSeek 降级链）
+    report(id, 'analyzing', 0, '调用 AI 分析')
+    const contentText = content || ''
+    let truncatedContent
+    if (contentText.length <= 8000) {
+      truncatedContent = contentText
+    } else {
+      truncatedContent = contentText.substring(0, 5000) +
+        '\n\n[...文档中间部分已省略...]\n\n' +
+        contentText.substring(contentText.length - 3000)
+    }
+    const userPrompt = `文档标题：${title || fileName}\n文档内容：${truncatedContent}`
 
     let rawText
+    let usedModel = 'unknown'
     try {
-      rawText = await callOllama(SYSTEM_PROMPT, userPrompt)
-    } catch (ollamaErr) {
-      log('WARN', `Ollama 失败: ${ollamaErr.message}`)
-      process.send({ type: 'result', id, data: { _fallback: true, reason: `Ollama 错误: ${ollamaErr.message}` } })
+      // 优先 Ollama
+      try {
+        rawText = await callOllama(SYSTEM_PROMPT, userPrompt)
+        usedModel = 'ollama'
+      } catch (ollamaErr) {
+        log('WARN', `Ollama 不可用: ${ollamaErr.message}，尝试 MiMo...`)
+
+        // 降级到 MiMo
+        try {
+          rawText = await callMimo(SYSTEM_PROMPT, userPrompt)
+          usedModel = 'mimo'
+        } catch (mimoErr) {
+          log('WARN', `MiMo 不可用: ${mimoErr.message}，尝试 DeepSeek...`)
+
+          // 降级到 DeepSeek
+          rawText = await callDeepSeek(SYSTEM_PROMPT, userPrompt)
+          usedModel = 'deepseek'
+        }
+      }
+
+      if (!rawText || rawText.trim().length === 0) {
+        throw new Error('AI 返回空内容')
+      }
+    } catch (aiErr) {
+      log('WARN', `全链路 AI 失败: ${aiErr.message}`)
+      process.send({ type: 'result', id, data: { _fallback: true, reason: `AI 错误: ${aiErr.message}` } })
       return
     }
+
+    log('INFO', `AI 分析完成 | model=${usedModel} | contentLen=${content.length}`)
 
     report(id, 'analyzing', 80, '解析 AI 响应')
 

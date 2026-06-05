@@ -117,12 +117,13 @@ class StorageService {
    * @param {number} offset - 偏移量，默认 0
    * @returns {Promise<Array>} 文档元数据列表
    */
-  async getDocumentMetadata(limit = 100, offset = 0) {
+  async getDocumentMetadata(limit = 0, offset = 0) {
     try {
-      const docs = await db.documents
-        .offset(offset)
-        .limit(limit)
-        .toArray()
+      let query = db.documents.offset(offset)
+      if (limit > 0) {
+        query = query.limit(limit)
+      }
+      const docs = await query.toArray()
       return docs.map(doc => ({
         id: doc.id,
         title: doc.title,

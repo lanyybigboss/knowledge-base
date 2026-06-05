@@ -25,10 +25,13 @@ export function AppProvider({ children }) {
 
   // ===== 通知 =====
   const showNotification = useCallback((type, message, duration = 3000) => {
-    dispatch({ type: ACTIONS.SET_NOTIFICATION, payload: { type, message } })
-    setTimeout(() => {
-      dispatch({ type: ACTIONS.CLEAR_NOTIFICATION })
-    }, duration)
+    const id = `notif-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
+    dispatch({ type: ACTIONS.SET_NOTIFICATION, payload: { type, message, id, duration } })
+    // 不再自动 clear，由 Notification 组件自行管理退出
+  }, [])
+
+  const removeNotification = useCallback((id) => {
+    dispatch({ type: ACTIONS.REMOVE_NOTIFICATION, payload: id })
   }, [])
 
   // ===== 业务操作 =====
@@ -63,7 +66,7 @@ export function AppProvider({ children }) {
         if (!mounted) return
 
         const [metadata, categories, settings, numberingRules] = await Promise.all([
-          storageService.getDocumentMetadata(200, 0),
+          storageService.getDocumentMetadata(0, 0),
           storageService.getCategories(),
           storageService.getSettings(),
           storageService.getNumberingRules()
@@ -137,7 +140,7 @@ export function AppProvider({ children }) {
   const reloadCountRef = useRef(0)
   const reloadDocuments = useCallback(async () => {
     try {
-      const docs = await storageService.getDocumentMetadata(200, 0)
+      const docs = await storageService.getDocumentMetadata(0, 0)
       logger.info(`[UI_REFRESH] reloadDocuments 完成 | documents.length=${docs.length}`)
       dispatch({ type: ACTIONS.SET_DOCUMENTS, payload: docs })
       debouncedBuildSearchIndex(docs)
@@ -184,12 +187,13 @@ export function AppProvider({ children }) {
     ...computed,
     ...actions,
     showNotification,
+    removeNotification,
     reloadDocuments,
     scheduleReloadDocuments,
     reloadCountRef
   }), [
     state, computed, actions,
-    showNotification, reloadDocuments, scheduleReloadDocuments
+    showNotification, removeNotification, reloadDocuments, scheduleReloadDocuments
   ])
 
   return (

@@ -2,13 +2,46 @@
  * 知识库管理系统 - 工具函数
  */
 
-import { FILE_TYPE_MAP, DEFAULT_NUMBERING_RULES, STORAGE_KEYS } from './constants'
+import { FILE_TYPE_MAP, DEFAULT_NUMBERING_RULES, STORAGE_KEYS, PRESET_CATEGORIES } from './constants'
 
 /**
- * 生成唯一ID
+ * 获取分类名称（预设 + 自定义分类合并）
+ */
+export function getCategoryName(catId, categories = []) {
+  const preset = PRESET_CATEGORIES.find(c => c.id === catId)
+  if (preset) return preset.name
+  const custom = categories.find(c => c.id === catId)
+  return custom ? custom.name : catId
+}
+
+/**
+ * 获取分类颜色
+ */
+export function getCategoryColor(catId) {
+  const preset = PRESET_CATEGORIES.find(c => c.id === catId)
+  return preset ? preset.color : '#6b7280'
+}
+
+/**
+ * 获取分类图标
+ */
+export function getCategoryIcon(catId) {
+  const preset = PRESET_CATEGORIES.find(c => c.id === catId)
+  return preset ? preset.icon : '📁'
+}
+
+/**
+ * 生成唯一ID（使用 crypto.randomUUID，不可用时回退）
  */
 export function generateId() {
-  return Date.now().toString(36) + Math.random().toString(36).substr(2, 9)
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID()
+  }
+  // 回退方案：增加更多熵源
+  const timestamp = Date.now().toString(36)
+  const randomPart = Math.random().toString(36).substring(2, 11)
+  const perfNow = (typeof performance !== 'undefined' ? performance.now() : 0).toString(36).replace('.', '')
+  return `${timestamp}-${randomPart}-${perfNow}`
 }
 
 /**

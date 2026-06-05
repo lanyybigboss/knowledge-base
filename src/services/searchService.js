@@ -79,7 +79,7 @@ class SearchService {
   async refreshIndex() {
     try {
       // 使用元数据而不是完整文档，减少内存占用
-      const documents = await storageService.getDocumentMetadata(200, 0)
+      const documents = await storageService.getDocumentMetadata(0, 0)
       this.buildIndex(documents, true) // 立即构建，不使用防抖
       logger.info(`[SearchService] 索引已刷新，共 ${documents.length} 个文档`)
     } catch (error) {

@@ -83,7 +83,7 @@ export async function processStrmFile(strmFileName, originalFilePath, strmFilePa
         logger.info(`[Strm 刮削] PDF 文件: ${strmFileName}，尝试提取文本...`)
         try {
           const pdfjsLib = await import('pdfjs-dist')
-          pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.mjs`
+          pdfjsLib.GlobalWorkerOptions.workerSrc = `/pdf.worker.min.mjs`
           const pdf = await pdfjsLib.getDocument({ data: bytes.buffer }).promise
           let fullText = ''
           for (let i = 1; i <= pdf.numPages; i++) {
