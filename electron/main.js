@@ -345,7 +345,9 @@ async function startFileWatcher(folderPath) {
       awaitWriteFinish: { stabilityThreshold: 2000, pollInterval: 100 }
     })
     watcherMap[folderPath] = instance
-    watcherStatusMap[folderPath] = { running: true, fileCount: initialCount, lastEvent: '监控已启动' }
+    // 自动检测 Obsidian vault（存在 .obsidian 子目录）
+    const isObsidianVault = fs.existsSync(path.join(folderPath, '.obsidian'))
+    watcherStatusMap[folderPath] = { running: true, fileCount: initialCount, lastEvent: '监控已启动', isObsidianVault }
 
     instance.on('add', async (filePath) => {
       const fileName = path.basename(filePath)
