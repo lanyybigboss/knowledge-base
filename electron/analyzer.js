@@ -19,7 +19,7 @@ const path = require('path')
 
 // ===== 配置 =====
 const OLLAMA_BASE_URL = 'http://localhost:11434'
-const OLLAMA_MODEL = 'qwen2.5:7b-instruct-q4_K_M'
+const OLLAMA_MODEL = 'qwen3:8b'
 const AI_TIMEOUT = 180000
 
 // DeepSeek API 配置（降级方案）

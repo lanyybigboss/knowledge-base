@@ -36,7 +36,7 @@ export default function AITab() {
     setOllamaStatus(prev => ({ ...prev, checking: true }))
     try {
       const available = await isOllamaAvailable()
-      setOllamaStatus({ checking: false, available, model: 'qwen2.5:7b-instruct-q4_K_M' })
+      setOllamaStatus({ checking: false, available, model: 'qwen3:8b' })
     } catch {
       setOllamaStatus({ checking: false, available: false, model: '' })
     }
