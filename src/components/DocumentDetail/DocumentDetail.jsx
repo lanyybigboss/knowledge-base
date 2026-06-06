@@ -24,6 +24,16 @@ export default function DocumentDetail() {
   const [editForm, setEditForm] = useState({})
   const [analyzing, setAnalyzing] = useState(false)
   const [analyzeError, setAnalyzeError] = useState('')
+  const [fullDoc, setFullDoc] = useState(null)
+
+  // 加载完整文档（含 content），因为列表中只有 metadata
+  useEffect(() => {
+    if (id) {
+      storageService.getDocument(id).then(doc => {
+        if (doc) setFullDoc(doc)
+      }).catch(() => {})
+    }
+  }, [id])
 
   // 记录浏览次数（组件顶层调用，不违反 hooks 规则）
   useEffect(() => {
@@ -92,7 +102,7 @@ export default function DocumentDetail() {
     setAnalyzeError('')
 
     try {
-      let content = doc.content || ''
+      let content = (fullDoc && fullDoc.content) || doc.content || ''
       const ext = (doc.fileName || doc.title || '').split('.').pop()?.toLowerCase()
 
       // 如果内容为空或是占位符（旧 PDF 上传时保存的提示文字），尝试从本地文件提取
@@ -470,21 +480,21 @@ export default function DocumentDetail() {
               📄 原文预览
             </h3>
             <div className="document-detail-content-preview">
-              {doc.content ? (
-                doc.content.startsWith('[') && (doc.content.includes('暂不支持') || doc.content.includes('无法以文本形式')) ? (
+              {(() => { const dc = (fullDoc && fullDoc.content) || doc.content; return dc ? (
+                dc.startsWith('[') && (dc.includes('暂不支持') || dc.includes('无法以文本形式')) ? (
                   <div className="document-detail-unsupported">
                     <div className="document-detail-unsupported-icon">
-                      {doc.fileType === 'pdf' ? '📕' : 
+                      {doc.fileType === 'pdf' ? '📕' :
                        ['doc', 'docx'].includes(doc.fileType) ? '📘' :
                        ['xls', 'xlsx'].includes(doc.fileType) ? '📗' : '📁'}
                     </div>
-                    <p className="document-detail-unsupported-text">{doc.content}</p>
+                    <p className="document-detail-unsupported-text">{dc}</p>
                     <p className="document-detail-unsupported-hint">
                       提示：上传 .txt 或 .md 格式的文本文件可以查看完整原文预览
                     </p>
                   </div>
                 ) : (
-                  <pre className="document-detail-content-text">{doc.content}</pre>
+                  <pre className="document-detail-content-text">{dc}</pre>
                 )
               ) : (
                 <div className="empty-state">
@@ -494,7 +504,7 @@ export default function DocumentDetail() {
                     该文档暂无可预览的文本内容。上传 .txt 或 .md 文件可查看完整原文。
                   </div>
                 </div>
-              )}
+              ); })()}
             </div>
           </div>
         </div>
@@ -578,7 +588,7 @@ export default function DocumentDetail() {
             {isEditing ? (
               <input
                 type="text"
-                value={editForm.tags?.join(', ') || ''}
+                value={Array.isArray(editForm.tags) ? editForm.tags.join(', ') : (editForm.tags || '')}
                 onChange={e => setEditForm({
                   ...editForm,
                   tags: e.target.value.split(',').map(t => t.trim()).filter(Boolean)
@@ -588,7 +598,7 @@ export default function DocumentDetail() {
               />
             ) : (
               <div className="document-detail-tags">
-                {doc.tags && doc.tags.length > 0 ? (
+                {Array.isArray(doc.tags) && doc.tags.length > 0 ? (
                   doc.tags.map((tag, i) => (
                     <span key={`${tag}-${i}`} className="tag">{tag}</span>
                   ))
