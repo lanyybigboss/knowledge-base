@@ -348,7 +348,7 @@ export function filterDocuments(documents, { search, category, type, sort, tags 
   // 标签过滤
   if (tags && tags.length > 0) {
     filtered = filtered.filter(doc => {
-      const docTags = doc.tags || []
+      const docTags = Array.isArray(doc.tags) ? doc.tags : []
       return tags.some(tag => docTags.includes(tag))
     })
   }

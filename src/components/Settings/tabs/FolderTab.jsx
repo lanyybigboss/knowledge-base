@@ -284,7 +284,7 @@ export default function FolderTab() {
                   {f.name}
                 </span>
                 <span style={{ color: 'var(--text-tertiary)', fontSize: '0.75rem' }}>
-                  {(f.size / 1024).toFixed(1)} KB
+                  {(f.size != null ? (f.size / 1024).toFixed(1) : '?')} KB
                 </span>
               </div>
             ))}

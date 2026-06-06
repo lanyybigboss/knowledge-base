@@ -180,7 +180,7 @@ function registerIpcHandlers(mainWindow) {
 
   ipcMain.handle('watcher-status', () => watcher.getCombinedWatcherStatus())
 
-  ipcMain.handle('watcher-files', () => {
+  ipcMain.handle('watcher-files', async () => {
     try {
       // 通过 getCombinedWatcherStatus 获取当前监控路径
       const status = watcher.getCombinedWatcherStatus()
@@ -188,24 +188,29 @@ function registerIpcHandlers(mainWindow) {
       if (allPaths2.length === 0) {
         return { success: false, files: [], error: '未设置监控目录' }
       }
+      const fsPromises = require('fs').promises
       let allFiles = []
       for (const folderPath of allPaths2) {
-        if (!fs.existsSync(folderPath)) continue
         try {
-          const files = fs.readdirSync(folderPath)
-            .filter(f => fs.statSync(path.join(folderPath, f)).isFile())
-            .map(f => ({
-              name: f,
-              folderPath,
-              size: fs.statSync(path.join(folderPath, f)).size,
-              modifiedAt: fs.statSync(path.join(folderPath, f)).mtime
-            }))
-          allFiles = allFiles.concat(files)
-        } catch (e) { /* ignore */ }
+          const entries = await fsPromises.readdir(folderPath, { withFileTypes: true })
+          for (const entry of entries) {
+            if (!entry.isFile()) continue
+            try {
+              const fullPath = path.join(folderPath, entry.name)
+              const stat = await fsPromises.stat(fullPath)
+              allFiles.push({
+                name: entry.name,
+                folderPath,
+                size: stat.size,
+                modifiedAt: stat.mtime
+              })
+            } catch (e) { /* ignore 单文件 stat 失败 */ }
+          }
+        } catch (e) { /* ignore 目录读取失败 */ }
       }
       allFiles.sort((a, b) => b.modifiedAt - a.modifiedAt)
-      allFiles = allFiles.slice(0, 50)
-      return { success: true, files: allFiles, total: allFiles.length }
+      const sliced = allFiles.slice(0, 50)
+      return { success: true, files: sliced, total: sliced.length }
     } catch (e) {
       return { success: false, error: e.message }
     }
@@ -239,6 +244,10 @@ function registerIpcHandlers(mainWindow) {
       const stat = fs.statSync(filePath)
       if (!stat.isFile()) {
         return { success: false, error: '路径不是文件' }
+      }
+      const MAX_FILE_SIZE = 100 * 1024 * 1024 // 100MB 上限
+      if (stat.size > MAX_FILE_SIZE) {
+        return { success: false, error: `文件过大 (${(stat.size / 1024 / 1024).toFixed(1)}MB)，超过 100MB 限制` }
       }
       const buffer = fs.readFileSync(filePath)
       const base64 = buffer.toString('base64')

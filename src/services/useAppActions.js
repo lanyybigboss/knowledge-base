@@ -179,7 +179,7 @@ export function useAppActions(dispatch, showNotification) {
   const loadData = useCallback(async () => {
     try {
       const [documents, categories, settings, numberingRules] = await Promise.all([
-        storageService.getDocuments(),
+        storageService.getDocumentMetadata(0, 0),
         storageService.getCategories(),
         storageService.getSettings(),
         storageService.getNumberingRules()

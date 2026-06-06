@@ -234,7 +234,7 @@ export default function DocumentList() {
                         </span>
                       )}
                       {/* AI 标签和标记 */}
-                      {doc.tags && doc.tags.length > 0 && (
+                      {Array.isArray(doc.tags) && doc.tags.length > 0 && (
                         <span className="document-list-file-tags">
                           {doc.tags.slice(0, 2).map((tag, i) => (
                             <span
@@ -256,7 +256,7 @@ export default function DocumentList() {
                         </span>
                       )}
                       {doc.aiAnalyzed && (
-                        <span className="document-list-file-tags" style={{ marginTop: doc.tags?.length > 0 ? '0' : '2px' }}>
+                        <span className="document-list-file-tags" style={{ marginTop: Array.isArray(doc.tags) && doc.tags.length > 0 ? '0' : '2px' }}>
                           <span className="badge badge-primary" style={{ fontSize: '0.625rem' }}>AI</span>
                         </span>
                       )}
