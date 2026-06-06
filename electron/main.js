@@ -19,23 +19,7 @@ const isHiddenStart = process.argv.includes('--hidden')
 
 // ===== 版本互斥：启动前检查 =====
 let shouldExitByVersion = false
-
-const _versionSelfCheckPassed = (() => {
-  const currentVersion = app.getVersion()
-  const currentPath = process.execPath
-  console.log(`[版本互斥] 启动检查 - 版本: ${currentVersion}, 路径: ${currentPath}`)
-
-  if (versionLock.performVersionCheck()) {
-    console.log(`[版本互斥] 存在更高版本或相同版本实例，当前实例将退出`)
-    shouldExitByVersion = true
-    app.quit()
-    return false
-  }
-
-  console.log(`[版本互斥] 当前实例版本最高 (${currentVersion})，继续启动`)
-  versionLock.startVersionHeartbeat()
-  return true
-})()
+let _versionSelfCheckPassed = false
 
 // ===== Electron 窗口 =====
 let mainWindow = null
@@ -159,7 +143,21 @@ function createWindow() {
 
 // ===== 应用生命周期 =====
 app.whenReady().then(() => {
-  if (shouldExitByVersion || !_versionSelfCheckPassed) return
+  // 版本互斥检查（必须在 app.ready 之后执行）
+  const currentVersion = app.getVersion()
+  const currentPath = process.execPath
+  console.log(`[版本互斥] 启动检查 - 版本: ${currentVersion}, 路径: ${currentPath}`)
+
+  if (versionLock.performVersionCheck()) {
+    console.log(`[版本互斥] 存在更高版本或相同版本实例，当前实例将退出`)
+    shouldExitByVersion = true
+    app.quit()
+    return
+  }
+
+  _versionSelfCheckPassed = true
+  console.log(`[版本互斥] 当前实例版本最高 (${currentVersion})，继续启动`)
+  versionLock.startVersionHeartbeat()
 
   storage.initStorageDirectories()
   registerIpcHandlers(mainWindow)

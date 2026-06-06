@@ -7,7 +7,13 @@ const { app } = require('electron')
 const path = require('path')
 const fs = require('fs')
 
-const VERSION_LOCK_FILE = path.join(app.getPath('userData'), 'version-lock.json')
+let _versionLockFilePath = null
+function getVersionLockFile() {
+  if (!_versionLockFilePath) {
+    _versionLockFilePath = path.join(app.getPath('userData'), 'version-lock.json')
+  }
+  return _versionLockFilePath
+}
 const HEARTBEAT_INTERVAL = 10000   // 心跳间隔 10 秒
 const STALE_TIMEOUT = 30000        // 锁文件超过 30 秒无心跳视为过期
 
@@ -41,8 +47,8 @@ function compareVersions(ver1, ver2) {
  */
 function readVersionLock() {
   try {
-    if (fs.existsSync(VERSION_LOCK_FILE)) {
-      return JSON.parse(fs.readFileSync(VERSION_LOCK_FILE, 'utf-8'))
+    if (fs.existsSync(getVersionLockFile())) {
+      return JSON.parse(fs.readFileSync(getVersionLockFile(), 'utf-8'))
     }
   } catch (e) { /* 文件损坏或被锁定，视为无锁 */ }
   return null
@@ -53,7 +59,7 @@ function readVersionLock() {
  */
 function writeVersionLock(data) {
   try {
-    fs.writeFileSync(VERSION_LOCK_FILE, JSON.stringify(data, null, 2), 'utf-8')
+    fs.writeFileSync(getVersionLockFile(), JSON.stringify(data, null, 2), 'utf-8')
   } catch (e) {
     console.error('[版本互斥] 写入锁文件失败:', e.message)
   }
@@ -158,7 +164,7 @@ function cleanupVersionLock() {
   const lock = readVersionLock()
   if (lock && lock.pid === process.pid) {
     try {
-      fs.unlinkSync(VERSION_LOCK_FILE)
+      fs.unlinkSync(getVersionLockFile())
     } catch (e) { /* ignore */ }
   }
 }
