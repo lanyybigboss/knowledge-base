@@ -61,6 +61,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getAutoStart: () => ipcRenderer.invoke('get-auto-start'),
   setAutoStart: (enabled) => ipcRenderer.invoke('set-auto-start', enabled),
 
+  // ===== Webhook 推送 =====
+  pushWebhook: (data) => ipcRenderer.invoke('push-webhook', data),
+
   // ===== 后台分析子进程 =====
   analyzerAnalyze: (data) => ipcRenderer.invoke('analyzer-analyze', data),
   analyzerStatus: () => ipcRenderer.invoke('analyzer-status'),

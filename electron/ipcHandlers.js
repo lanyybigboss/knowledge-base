@@ -402,6 +402,25 @@ function registerIpcHandlers(mainWindow) {
     ready: analyzer.isAnalyzerReady(),
     pid: null
   }))
+
+  // ===== Webhook 推送 =====
+  ipcMain.handle('push-webhook', async (_, { url, payload }) => {
+    if (!url) return { success: false, error: 'Webhook URL not configured' }
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+        signal: AbortSignal.timeout(10000)
+      })
+      if (!response.ok) {
+        return { success: false, error: `HTTP ${response.status}` }
+      }
+      return { success: true }
+    } catch (e) {
+      return { success: false, error: e.message }
+    }
+  })
 }
 
 module.exports = { registerIpcHandlers }
