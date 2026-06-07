@@ -114,13 +114,17 @@ class BackgroundAnalysisService {
         unsubError()
       }
 
-      // 发送分析请求
+      // 发送分析请求（附带 API Keys，子进程无法访问 localStorage）
       window.electronAPI.analyzerAnalyze({
         id: doc.id,
         filePath: doc.localFilePath,
         fileName: doc.fileName,
         fileType: doc.fileType,
-        title: doc.title
+        title: doc.title,
+        apiKeys: {
+          mimo: localStorage.getItem('mimo_api_key') || '',
+          deepseek: localStorage.getItem('deepseek_api_key') || ''
+        }
       })
     })
   }

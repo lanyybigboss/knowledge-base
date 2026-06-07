@@ -176,8 +176,8 @@ async function callOllama(systemPrompt, userPrompt) {
 /**
  * DeepSeek API 调用（Ollama 不可用时的降级方案）
  */
-async function callDeepSeek(systemPrompt, userPrompt) {
-  const apiKey = process.env.DEEPSEEK_API_KEY || ''
+async function callDeepSeek(systemPrompt, userPrompt, passedKey) {
+  const apiKey = passedKey || process.env.DEEPSEEK_API_KEY || ''
   if (!apiKey) throw new Error('DeepSeek API Key 未配置')
 
   const controller = new AbortController()
@@ -214,8 +214,8 @@ async function callDeepSeek(systemPrompt, userPrompt) {
 /**
  * MiMo Token Plan 调用（第二降级方案）
  */
-async function callMimo(systemPrompt, userPrompt) {
-  const apiKey = process.env.MIMO_API_KEY || ''
+async function callMimo(systemPrompt, userPrompt, passedKey) {
+  const apiKey = passedKey || process.env.MIMO_API_KEY || ''
   if (!apiKey) throw new Error('MiMo API Key 未配置')
 
   const controller = new AbortController()
@@ -301,7 +301,7 @@ function normalizeResult(analysis) {
 // ===== 主处理流程 =====
 
 async function handleAnalyze(msg) {
-  const { id, filePath, fileName, fileType, title } = msg
+  const { id, filePath, fileName, fileType, title, apiKeys = {} } = msg
 
   try {
     // 阶段 1：读取文件文本
@@ -338,13 +338,13 @@ async function handleAnalyze(msg) {
 
         // 降级到 MiMo
         try {
-          rawText = await callMimo(SYSTEM_PROMPT, userPrompt)
+          rawText = await callMimo(SYSTEM_PROMPT, userPrompt, apiKeys.mimo)
           usedModel = 'mimo'
         } catch (mimoErr) {
           log('WARN', `MiMo 不可用: ${mimoErr.message}，尝试 DeepSeek...`)
 
           // 降级到 DeepSeek
-          rawText = await callDeepSeek(SYSTEM_PROMPT, userPrompt)
+          rawText = await callDeepSeek(SYSTEM_PROMPT, userPrompt, apiKeys.deepseek)
           usedModel = 'deepseek'
         }
       }
