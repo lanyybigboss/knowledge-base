@@ -12,11 +12,19 @@ import { generateId, generateDocumentNumber } from '../utils/helpers'
 // 创建 Dexie 数据库实例
 const db = new Dexie('KnowledgeBaseDB')
 
-// 定义数据库结构
+// v1: 原始表
 db.version(1).stores({
   documents: '&id, category, fileType, starred, createdAt, updatedAt, title',
   categories: '&id',
   kvStore: '&key'
+})
+
+// v2: 新增 todos 表（待办事项 + 角色匹配）
+db.version(2).stores({
+  documents: '&id, category, fileType, starred, createdAt, updatedAt, title',
+  categories: '&id',
+  kvStore: '&key',
+  todos: '&id, documentId, status, dueDate, createdAt'
 })
 
 class StorageService {
@@ -277,6 +285,7 @@ class StorageService {
       detailedSummary: docData.detailedSummary || '',
       entities: docData.entities || { people: [], organizations: [], locations: [], dates: [] },
       smartTitle: docData.smartTitle || '',
+      actionItems: docData.actionItems || [],
       searchIndex: docData.searchIndex || '',
       aiAnalyzed: docData.aiAnalyzed || false,
       localFilePath: docData.localFilePath || '',
@@ -575,27 +584,157 @@ class StorageService {
     }
   }
 
+  // ==================== 用户档案 ====================
+
+  /**
+   * 获取用户档案
+   */
+  async getUserProfile() {
+    try {
+      const entry = await db.kvStore.get('userProfile')
+      return entry ? entry.value : { name: '', role: '', department: '', keywords: [] }
+    } catch (error) {
+      logger.error('获取用户档案失败:', error)
+      return { name: '', role: '', department: '', keywords: [] }
+    }
+  }
+
+  /**
+   * 更新用户档案（增量合并）
+   */
+  async updateUserProfile(profile) {
+    try {
+      const current = await this.getUserProfile()
+      await db.kvStore.put({ key: 'userProfile', value: { ...current, ...profile } })
+      return true
+    } catch (error) {
+      logger.error('保存用户档案失败:', error)
+      return false
+    }
+  }
+
+  // ==================== 待办事项 ====================
+
+  /**
+   * 新增待办事项
+   */
+  async addTodo(todoData) {
+    const now = new Date().toISOString()
+    const todo = {
+      id: generateId(),
+      documentId: todoData.documentId || '',
+      title: todoData.title || '',
+      targetRole: todoData.targetRole || '',
+      targetPerson: todoData.targetPerson || '',
+      dueDate: todoData.dueDate || null,
+      status: 'pending',   // pending | done | dismissed
+      source: todoData.source || 'ai',
+      createdAt: now,
+      updatedAt: now
+    }
+    await db.todos.put(todo)
+    return todo
+  }
+
+  /**
+   * 获取所有待办事项
+   */
+  async getAllTodos() {
+    try {
+      return await db.todos.orderBy('createdAt').reverse().toArray()
+    } catch (error) {
+      logger.error('获取待办事项失败:', error)
+      return []
+    }
+  }
+
+  /**
+   * 按条件查询待办事项
+   */
+  async getTodos(filter = {}) {
+    try {
+      let results = await db.todos.toArray()
+      if (filter.documentId) {
+        results = results.filter(t => t.documentId === filter.documentId)
+      }
+      if (filter.status) {
+        results = results.filter(t => t.status === filter.status)
+      }
+      results.sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+      return results
+    } catch (error) {
+      logger.error('查询待办事项失败:', error)
+      return []
+    }
+  }
+
+  /**
+   * 更新待办事项
+   */
+  async updateTodo(id, updates) {
+    try {
+      const todo = await db.todos.get(id)
+      if (!todo) return null
+      const updated = { ...todo, ...updates, updatedAt: new Date().toISOString() }
+      await db.todos.put(updated)
+      return updated
+    } catch (error) {
+      logger.error('更新待办事项失败:', error)
+      return null
+    }
+  }
+
+  /**
+   * 删除待办事项
+   */
+  async deleteTodo(id) {
+    try {
+      await db.todos.delete(id)
+      return true
+    } catch (error) {
+      logger.error('删除待办事项失败:', error)
+      return false
+    }
+  }
+
+  /**
+   * 按文档 ID 删除所有关联待办
+   */
+  async deleteTodosByDocumentId(documentId) {
+    try {
+      await db.todos.where('documentId').equals(documentId).delete()
+      return true
+    } catch (error) {
+      logger.error('删除关联待办失败:', error)
+      return false
+    }
+  }
+
   // ==================== 数据导入导出 ====================
 
   /**
    * 导出所有数据
    */
   async exportAllData() {
-    const [documents, categories, numberingRules, settings, counters] = await Promise.all([
+    const [documents, categories, numberingRules, settings, counters, userProfile, todos] = await Promise.all([
       this.getDocuments(),
       this.getCategories(),
       this.getNumberingRules(),
       this.getSettings(),
-      this._getCounters()
+      this._getCounters(),
+      this.getUserProfile(),
+      this.getAllTodos()
     ])
     return {
-      version: '1.0',
+      version: '2.0',
       exportedAt: new Date().toISOString(),
       documents,
       categories,
       numberingRules,
       settings,
-      counters
+      counters,
+      userProfile,
+      todos
     }
   }
 
@@ -608,7 +747,8 @@ class StorageService {
       const tables = []
       if (data.documents) tables.push(db.documents)
       if (data.categories) tables.push(db.categories)
-      if (tables.length > 0 || data.numberingRules || data.settings || data.counters) {
+      if (data.todos) tables.push(db.todos)
+      if (tables.length > 0 || data.numberingRules || data.settings || data.counters || data.userProfile) {
         if (!tables.includes(db.kvStore)) tables.push(db.kvStore)
       }
 
@@ -621,6 +761,10 @@ class StorageService {
           await db.categories.clear()
           await db.categories.bulkPut(data.categories)
         }
+        if (data.todos) {
+          await db.todos.clear()
+          await db.todos.bulkPut(data.todos)
+        }
         if (data.numberingRules) {
           await db.kvStore.put({ key: 'numberingRules', value: data.numberingRules })
         }
@@ -629,6 +773,9 @@ class StorageService {
         }
         if (data.counters) {
           await db.kvStore.put({ key: 'counters', value: data.counters })
+        }
+        if (data.userProfile) {
+          await db.kvStore.put({ key: 'userProfile', value: data.userProfile })
         }
       })
 
@@ -649,7 +796,8 @@ class StorageService {
     await Promise.all([
       db.documents.clear(),
       db.categories.clear(),
-      db.kvStore.clear()
+      db.kvStore.clear(),
+      db.todos.clear()
     ])
     Object.values(STORAGE_KEYS).forEach(key => {
       localStorage.removeItem(key)

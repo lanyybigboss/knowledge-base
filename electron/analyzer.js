@@ -134,6 +134,14 @@ const SYSTEM_PROMPT = `你是一个专业的文档分析助手。请对以下文
 
 7. smartTitle: 简短中文标题（不超过20字）
 
+8. actionItems: 从文档中提取的待办事项/行动项数组，每项包含：
+   - title: 行动项标题/描述（简明扼要）
+   - targetRole: 目标角色（如"化学教师"、"技术负责人"、"项目经理"等，仅在文档明确提及时填写，否则为空字符串）
+   - targetPerson: 目标人物（仅在文档明确指定某人时填写，否则为空字符串）
+   - dueDate: 截止日期（ISO格式如"2026-06-07"，仅在文档明确提及时填写，否则为null）
+   - location: 地点（如有提及，否则为空字符串）
+   如果文档中没有明显的待办事项或行动项，返回空数组 []。
+
 严格返回 JSON 格式，不要包含任何其他文字。`
 
 async function callOllama(systemPrompt, userPrompt) {
@@ -277,7 +285,16 @@ function normalizeResult(analysis) {
     keywords: (analysis.keywords || []).filter(Boolean).slice(0, 8),
     tags: (analysis.tags || []).slice(0, 3),
     entities: analysis.entities || { people: [], organizations: [], locations: [], dates: [] },
-    smartTitle: safeStr(analysis.smartTitle).substring(0, 20)
+    smartTitle: safeStr(analysis.smartTitle).substring(0, 20),
+    actionItems: Array.isArray(analysis.actionItems)
+      ? analysis.actionItems.slice(0, 20).map(item => ({
+          title: safeStr(item.title).substring(0, 200),
+          targetRole: safeStr(item.targetRole).substring(0, 50),
+          targetPerson: safeStr(item.targetPerson).substring(0, 50),
+          dueDate: item.dueDate || null,
+          location: safeStr(item.location).substring(0, 100)
+        }))
+      : []
   }
 }
 
