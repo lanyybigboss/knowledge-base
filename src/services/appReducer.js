@@ -31,6 +31,16 @@ export const ACTIONS = {
   UPDATE_SETTINGS: 'UPDATE_SETTINGS',
   SET_NUMBERING_RULES: 'SET_NUMBERING_RULES',
 
+  // 用户档案
+  SET_USER_PROFILE: 'SET_USER_PROFILE',
+  UPDATE_USER_PROFILE: 'UPDATE_USER_PROFILE',
+
+  // 待办事项
+  SET_TODOS: 'SET_TODOS',
+  ADD_TODO: 'ADD_TODO',
+  UPDATE_TODO: 'UPDATE_TODO',
+  DELETE_TODO: 'DELETE_TODO',
+
   // 数据管理
   IMPORT_DATA: 'IMPORT_DATA',
   CLEAR_ALL: 'CLEAR_ALL',
@@ -62,6 +72,8 @@ export const initialState = {
 
   settings: {},
   numberingRules: {},
+  userProfile: { name: '', role: '', department: '', keywords: [] },
+  todos: [],
 
   loading: false,
   dataLoaded: false,
@@ -156,6 +168,31 @@ export function appReducer(state, action) {
 
     case ACTIONS.SET_NUMBERING_RULES:
       return { ...state, numberingRules: action.payload }
+
+    // ===== 用户档案 =====
+    case ACTIONS.SET_USER_PROFILE:
+      return { ...state, userProfile: action.payload }
+
+    case ACTIONS.UPDATE_USER_PROFILE:
+      return { ...state, userProfile: { ...state.userProfile, ...action.payload } }
+
+    // ===== 待办事项 =====
+    case ACTIONS.SET_TODOS:
+      return { ...state, todos: Array.isArray(action.payload) ? action.payload : [] }
+
+    case ACTIONS.ADD_TODO:
+      return { ...state, todos: [action.payload, ...state.todos] }
+
+    case ACTIONS.UPDATE_TODO:
+      return {
+        ...state,
+        todos: state.todos.map(t =>
+          t.id === action.payload.id ? { ...t, ...action.payload } : t
+        )
+      }
+
+    case ACTIONS.DELETE_TODO:
+      return { ...state, todos: state.todos.filter(t => t.id !== action.payload) }
 
     // ===== 数据管理 =====
     case ACTIONS.IMPORT_DATA:

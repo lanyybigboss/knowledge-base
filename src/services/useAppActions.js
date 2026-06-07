@@ -268,12 +268,69 @@ export function useAppActions(dispatch, showNotification) {
     dispatch({ type: ACTIONS.TOGGLE_LOG_VIEWER })
   }, [dispatch])
 
+  // ===== 用户档案 =====
+
+  const updateUserProfile = useCallback(async (profile) => {
+    try {
+      const success = await storageService.updateUserProfile(profile)
+      if (success) {
+        dispatch({ type: ACTIONS.UPDATE_USER_PROFILE, payload: profile })
+      }
+      return success
+    } catch (error) {
+      logger.error('保存用户档案失败:', error)
+      showNotification('error', '保存用户档案失败')
+      return false
+    }
+  }, [dispatch, showNotification])
+
+  // ===== 待办事项 =====
+
+  const loadTodos = useCallback(async () => {
+    try {
+      const todos = await storageService.getAllTodos()
+      dispatch({ type: ACTIONS.SET_TODOS, payload: todos })
+      return todos
+    } catch (error) {
+      logger.error('加载待办事项失败:', error)
+      return []
+    }
+  }, [dispatch])
+
+  const updateTodo = useCallback(async (id, updates) => {
+    try {
+      const todo = await storageService.updateTodo(id, updates)
+      if (todo) {
+        dispatch({ type: ACTIONS.UPDATE_TODO, payload: todo })
+      }
+      return todo
+    } catch (error) {
+      logger.error('更新待办事项失败:', error)
+      return null
+    }
+  }, [dispatch])
+
+  const deleteTodo = useCallback(async (id) => {
+    try {
+      const success = await storageService.deleteTodo(id)
+      if (success) {
+        dispatch({ type: ACTIONS.DELETE_TODO, payload: id })
+      }
+      return success
+    } catch (error) {
+      logger.error('删除待办事项失败:', error)
+      return false
+    }
+  }, [dispatch])
+
   return {
     addDocument, updateDocument, deleteDocument, deleteDocuments, toggleStar,
     addCategory, updateCategory, deleteCategory,
     updateSettings, updateNumberingRules,
     loadData, exportData, importData, clearAllData,
     setSearch, setFilters, setSort, setPage, setPageSize, setSelectedIds,
-    toggleSidebar, toggleLogViewer
+    toggleSidebar, toggleLogViewer,
+    updateUserProfile,
+    loadTodos, updateTodo, deleteTodo
   }
 }

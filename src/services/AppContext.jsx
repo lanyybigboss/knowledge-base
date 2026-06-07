@@ -65,17 +65,21 @@ export function AppProvider({ children }) {
 
         if (!mounted) return
 
-        const [metadata, categories, settings, numberingRules] = await Promise.all([
+        const [metadata, categories, settings, numberingRules, userProfile, todos] = await Promise.all([
           storageService.getDocumentMetadata(0, 0),
           storageService.getCategories(),
           storageService.getSettings(),
-          storageService.getNumberingRules()
+          storageService.getNumberingRules(),
+          storageService.getUserProfile(),
+          storageService.getAllTodos()
         ])
 
         dispatch({ type: ACTIONS.SET_DOCUMENTS, payload: metadata })
         dispatch({ type: ACTIONS.SET_CATEGORIES, payload: categories })
         dispatch({ type: ACTIONS.SET_SETTINGS, payload: settings })
         dispatch({ type: ACTIONS.SET_NUMBERING_RULES, payload: numberingRules })
+        dispatch({ type: ACTIONS.SET_USER_PROFILE, payload: userProfile })
+        dispatch({ type: ACTIONS.SET_TODOS, payload: todos })
 
         searchService.buildIndex(metadata)
 
@@ -165,9 +169,16 @@ export function AppProvider({ children }) {
 
   // ===== 后台 AI 分析完成回调 =====
   useEffect(() => {
-    backgroundAnalysisService.onDocumentUpdated = (docId) => {
+    backgroundAnalysisService.onDocumentUpdated = async (docId) => {
       logger.info(`[UI_REFRESH] 收到后台 AI 完成通知 | docId=${docId}`)
       scheduleReloadDocuments()
+      // 同步刷新待办（AI 分析可能创建了新待办）
+      try {
+        const todos = await storageService.getAllTodos()
+        dispatch({ type: ACTIONS.SET_TODOS, payload: todos })
+      } catch (e) {
+        logger.error('[UI_REFRESH] 刷新待办失败:', e.message)
+      }
     }
   }, [scheduleReloadDocuments])
 

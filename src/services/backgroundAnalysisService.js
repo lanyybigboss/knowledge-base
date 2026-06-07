@@ -8,6 +8,7 @@ import taskQueueService from './taskQueueService'
 import logger from './logger'
 import { analyzeDocument, hasApiKey, isOllamaAvailable, hasMimoApiKey } from './aiService'
 import { generateSmartDocNumber } from '../utils/helpers'
+import { processActionItems } from './roleMatchingService'
 
 /** 补全空实体：如果 AI 返回的实体全空，用关键词/摘要做兜底 */
 function ensureEntities(result) {
@@ -223,6 +224,7 @@ class BackgroundAnalysisService {
           tags: result.tags || [],
           entities: result.entities || { people: [], organizations: [], locations: [], dates: [] },
           smartTitle: result.smartTitle || '',
+          actionItems: result.actionItems || [],
           docNumber: result.smartTitle ? generateSmartDocNumber(result.smartTitle, doc.createdAt) : doc.docNumber,
           searchIndex: searchIndex,
           aiAnalyzed: true  // ← 最后才设 aiAnalyzed
@@ -231,6 +233,15 @@ class BackgroundAnalysisService {
 
         logger.info(`[BackgroundAnalysis] 分析完成: "${title || fileName}", smartTitle: "${result.smartTitle || '-'}"`)
         this._pendingIds.delete(doc.id)
+
+        // 角色匹配：从 actionItems 提取待办并推送
+        if (result.actionItems && result.actionItems.length > 0) {
+          try {
+            await processActionItems(doc.id, result.actionItems, 'ai')
+          } catch (e) {
+            logger.error('[BackgroundAnalysis] 处理 actionItems 失败:', e.message)
+          }
+        }
 
         // 通知 AppContext 触发 UI 刷新
         if (typeof this.onDocumentUpdated === 'function') {
