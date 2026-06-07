@@ -399,43 +399,6 @@ export default function AITab() {
         </div>
       </div>
 
-      {/* AI 降级策略说明 */}
-      <div className="card">
-        <h3 className="card-title" style={{ marginBottom: 'var(--space-lg)' }}>
-          AI 分析降级策略
-        </h3>
-        <div className="ai-strategy-list">
-          <div className="ai-strategy-item">
-            <span className="ai-strategy-num">1</span>
-            <div>
-              <strong>优先：Ollama 本地模型</strong>
-              <p>免费、无网络依赖、隐私安全。</p>
-            </div>
-          </div>
-          <div className="ai-strategy-item">
-            <span className="ai-strategy-num">2</span>
-            <div>
-              <strong>备选：MiMo Token Plan</strong>
-              <p>小米 MiMo 大模型订阅，兼容 OpenAI 格式，性价比高。</p>
-            </div>
-          </div>
-          <div className="ai-strategy-item">
-            <span className="ai-strategy-num">3</span>
-            <div>
-              <strong>备选：DeepSeek API</strong>
-              <p>云端 DeepSeek API，需要配置有效 API Key。</p>
-            </div>
-          </div>
-          <div className="ai-strategy-item">
-            <span className="ai-strategy-num">4</span>
-            <div>
-              <strong>兜底：自动分类</strong>
-              <p>所有 AI 服务均失败时，文档归入&quot;其他&quot;分类，支持手动编辑。</p>
-            </div>
-          </div>
-        </div>
-      </div>
-
       {/* AI 分析管理 */}
       <div className="card">
         <h3 className="card-title" style={{ marginBottom: 'var(--space-lg)' }}>
