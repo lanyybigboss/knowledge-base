@@ -15,6 +15,7 @@ import UploadPage from './components/Upload/UploadPage'
 import CategoryPage from './components/Category/CategoryPage'
 import StatisticsPage from './components/Statistics/StatisticsPage'
 import SettingsPage from './components/Settings/SettingsPage'
+import TodoPage from './components/TodoList/TodoPage'
 import QuickSearchModal from './components/QuickSearch/QuickSearchModal'
 import DevPanel from './components/DevPanel/DevPanel'
 
@@ -61,6 +62,7 @@ function AppInner() {
           <Route path="/upload" element={<UploadPage />} />
           <Route path="/categories" element={<CategoryPage />} />
           <Route path="/statistics" element={<StatisticsPage />} />
+          <Route path="/todos" element={<TodoPage />} />
           <Route path="/settings" element={<SettingsPage />} />
         </Routes>
       </MainLayout>

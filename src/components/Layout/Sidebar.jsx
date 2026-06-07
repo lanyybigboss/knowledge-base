@@ -13,6 +13,7 @@ const NAV_ITEMS = [
   { path: '/documents', icon: '📄', label: '文档管理' },
   { path: '/upload', icon: '📤', label: '上传文档' },
   { path: '/categories', icon: '📂', label: '分类管理' },
+  { path: '/todos', icon: '✅', label: '待办' },
   { path: '/statistics', icon: '📈', label: '统计分析' },
   { path: '/settings', icon: '⚙️', label: '系统设置' }
 ]

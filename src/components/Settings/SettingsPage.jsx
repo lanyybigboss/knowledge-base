@@ -10,14 +10,17 @@ import AITab from './tabs/AITab'
 import NumberingTab from './tabs/NumberingTab'
 import FolderTab from './tabs/FolderTab'
 import DataTab from './tabs/DataTab'
+import UserProfileTab from './tabs/UserProfileTab'
 import './SettingsPage.css'
 
 export default function SettingsPage() {
   const {
     settings,
     numberingRules,
+    userProfile,
     updateSettings,
     updateNumberingRules,
+    updateUserProfile,
     exportData,
     importData,
     clearAllData,
@@ -65,6 +68,7 @@ export default function SettingsPage() {
   const tabs = [
     { id: 'general', label: '通用设置' },
     { id: 'ai', label: 'AI 设置' },
+    { id: 'profile', label: '个人配置' },
     { id: 'numbering', label: '编号规则' },
     { id: 'folder', label: '文件夹监控' },
     { id: 'data', label: '数据管理' }
@@ -100,6 +104,15 @@ export default function SettingsPage() {
 
         {activeTab === 'ai' && (
           <AITab />
+        )}
+
+        {activeTab === 'profile' && (
+          <UserProfileTab
+            userProfile={userProfile}
+            updateUserProfile={updateUserProfile}
+            settings={settings}
+            updateSettings={updateSettings}
+          />
         )}
 
         {activeTab === 'numbering' && (

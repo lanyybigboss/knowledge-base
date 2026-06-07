@@ -1,0 +1,265 @@
+/* ===== TodoPage 样式 ===== */
+
+.todo-page {
+  padding: var(--space-xl);
+  max-width: 960px;
+  margin: 0 auto;
+}
+
+.todo-page-header {
+  margin-bottom: var(--space-xl);
+}
+
+.todo-page-title {
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 4px;
+}
+
+.todo-page-subtitle {
+  font-size: 0.875rem;
+  color: var(--text-tertiary);
+}
+
+/* 统计卡片 */
+.todo-stats {
+  display: flex;
+  gap: var(--space-md);
+  margin-bottom: var(--space-xl);
+}
+
+.todo-stat-card {
+  flex: 1;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-lg);
+  text-align: center;
+}
+
+.todo-stat-card--highlight {
+  border-color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 5%, var(--surface));
+}
+
+.todo-stat-number {
+  font-size: 2rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  line-height: 1;
+  margin-bottom: 4px;
+}
+
+.todo-stat-card--highlight .todo-stat-number {
+  color: var(--primary);
+}
+
+.todo-stat-label {
+  font-size: 0.8rem;
+  color: var(--text-tertiary);
+}
+
+/* 过滤器 */
+.todo-filters {
+  display: flex;
+  gap: 8px;
+  margin-bottom: var(--space-lg);
+  flex-wrap: wrap;
+}
+
+.todo-filter-btn {
+  padding: 6px 16px;
+  border-radius: 20px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.todo-filter-btn:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.todo-filter-btn--active {
+  background: var(--primary);
+  color: white;
+  border-color: var(--primary);
+}
+
+/* 待办列表 */
+.todo-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.todo-item {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-md);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-md) var(--space-lg);
+  transition: all 0.15s;
+}
+
+.todo-item:hover {
+  border-color: color-mix(in srgb, var(--primary) 30%, transparent);
+}
+
+.todo-item--matched {
+  border-left: 3px solid var(--primary);
+  background: color-mix(in srgb, var(--primary) 3%, var(--surface));
+}
+
+.todo-item--done {
+  opacity: 0.6;
+}
+
+.todo-item-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.todo-item-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.todo-item-icon {
+  flex-shrink: 0;
+  font-size: 1rem;
+}
+
+.todo-item-title {
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.todo-item--done .todo-item-title {
+  text-decoration: line-through;
+  color: var(--text-tertiary);
+}
+
+.todo-badge {
+  font-size: 0.65rem;
+  padding: 1px 8px;
+  border-radius: 10px;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.todo-badge--match {
+  background: color-mix(in srgb, var(--primary) 12%, transparent);
+  color: var(--primary);
+}
+
+.todo-item-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding-left: 24px;
+}
+
+.todo-tag {
+  font-size: 0.72rem;
+  color: var(--text-tertiary);
+  background: var(--surface-hover, #f3f4f6);
+  padding: 1px 8px;
+  border-radius: 8px;
+}
+
+.todo-tag--overdue {
+  color: var(--error);
+  background: color-mix(in srgb, var(--error) 8%, transparent);
+}
+
+.todo-tag--link {
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-style: dotted;
+}
+
+.todo-tag--link:hover {
+  color: var(--primary);
+}
+
+/* 操作按钮 */
+.todo-item-actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+  padding-top: 2px;
+}
+
+.todo-action-btn {
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: transparent;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s;
+}
+
+.todo-action-btn:hover {
+  background: var(--surface-hover, #f3f4f6);
+}
+
+.todo-action-btn--delete:hover {
+  background: color-mix(in srgb, var(--error) 10%, transparent);
+}
+
+/* 空状态 */
+.todo-empty {
+  text-align: center;
+  padding: 60px 20px;
+}
+
+.todo-empty-icon {
+  font-size: 3rem;
+  margin-bottom: var(--space-md);
+}
+
+.todo-empty-text {
+  font-size: 1rem;
+  color: var(--text-secondary);
+  margin-bottom: 4px;
+}
+
+.todo-empty-hint {
+  font-size: 0.8rem;
+  color: var(--text-tertiary);
+}
+
+/* 响应式 */
+@media (max-width: 640px) {
+  .todo-page {
+    padding: var(--space-md);
+  }
+
+  .todo-stats {
+    flex-direction: column;
+  }
+
+  .todo-item {
+    flex-direction: column;
+  }
+
+  .todo-item-actions {
+    align-self: flex-end;
+  }
+}
