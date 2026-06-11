@@ -1,0 +1,197 @@
+{
+  "main": {
+    "id": "15e385853c80812e",
+    "type": "split",
+    "children": [
+      {
+        "id": "4b1b762a891a5dff",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "9b72e3a4e00cb492",
+            "type": "leaf",
+            "state": {
+              "type": "markdown",
+              "state": {
+                "file": "Agent长期记忆.md",
+                "mode": "source",
+                "source": false
+              },
+              "icon": "lucide-file",
+              "title": "Agent长期记忆"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "vertical"
+  },
+  "left": {
+    "id": "f3f83ac948b29091",
+    "type": "split",
+    "children": [
+      {
+        "id": "5746b1c1c8d279d0",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "59f1ea10acfa59c5",
+            "type": "leaf",
+            "state": {
+              "type": "file-explorer",
+              "state": {
+                "sortOrder": "alphabetical",
+                "autoReveal": false
+              },
+              "icon": "lucide-folder-closed",
+              "title": "文件列表"
+            }
+          },
+          {
+            "id": "470f0eb6fecdefcb",
+            "type": "leaf",
+            "state": {
+              "type": "search",
+              "state": {
+                "query": "",
+                "matchingCase": false,
+                "explainSearch": false,
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical"
+              },
+              "icon": "lucide-search",
+              "title": "搜索"
+            }
+          },
+          {
+            "id": "28c9f0d91f7a14c4",
+            "type": "leaf",
+            "state": {
+              "type": "bookmarks",
+              "state": {},
+              "icon": "lucide-bookmark",
+              "title": "书签"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300
+  },
+  "right": {
+    "id": "ec97ed1619a486d2",
+    "type": "split",
+    "children": [
+      {
+        "id": "feb9d6d3b0149b2c",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "7ce50913d4ffbcbd",
+            "type": "leaf",
+            "state": {
+              "type": "backlink",
+              "state": {
+                "file": "ForAI/Agent长期记忆.md",
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical",
+                "showSearch": false,
+                "searchQuery": "",
+                "backlinkCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-coming-in",
+              "title": "Agent长期记忆 的反向链接列表"
+            }
+          },
+          {
+            "id": "e96b56804756400e",
+            "type": "leaf",
+            "state": {
+              "type": "outgoing-link",
+              "state": {
+                "file": "ForAI/Agent长期记忆.md",
+                "linksCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-going-out",
+              "title": "Agent长期记忆 的出链列表"
+            }
+          },
+          {
+            "id": "ef76bf6a2a3366bc",
+            "type": "leaf",
+            "state": {
+              "type": "tag",
+              "state": {
+                "sortOrder": "frequency",
+                "useHierarchy": true,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-tags",
+              "title": "标签"
+            }
+          },
+          {
+            "id": "927274f128ab4c9c",
+            "type": "leaf",
+            "state": {
+              "type": "all-properties",
+              "state": {
+                "sortOrder": "frequency",
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-archive",
+              "title": "添加笔记属性"
+            }
+          },
+          {
+            "id": "c7e744f41a1c7671",
+            "type": "leaf",
+            "state": {
+              "type": "outline",
+              "state": {
+                "file": "ForAI/Agent长期记忆.md",
+                "followCursor": false,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-list",
+              "title": "Agent长期记忆 的大纲"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300,
+    "collapsed": true
+  },
+  "left-ribbon": {
+    "hiddenItems": {
+      "switcher:打开快速切换": false,
+      "graph:查看关系图谱": false,
+      "canvas:新建白板": false,
+      "daily-notes:打开/创建今天的日记": false,
+      "templates:插入模板": false,
+      "command-palette:打开命令面板": false,
+      "bases:新建数据库": false
+    }
+  },
+  "active": "9b72e3a4e00cb492",
+  "lastOpenFiles": [
+    "知识库管理最佳实践.md",
+    "编码规范与约定.md",
+    "AgentSkills技能体系.md",
+    "Agent长期记忆.md",
+    "01-项目概览.md",
+    "ForAI/未命名.md",
+    "ForAI/欢迎.md",
+    "ForAI/01-项目概览.md"
+  ]
+}
