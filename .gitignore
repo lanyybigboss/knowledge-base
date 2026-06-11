@@ -35,3 +35,13 @@ npm-debug.log*
 # Playwright
 playwright-report/
 test-results/
+
+# Obsidian Vault (外部 junction)
+ForAi/
+
+# Obsidian Vault 克隆仓库
+obsidian-vault-repo/
+
+# Agent 配置
+.codex/
+AGENTS.md
