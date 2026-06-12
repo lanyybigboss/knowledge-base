@@ -8,6 +8,7 @@ import taskQueueService from './taskQueueService'
 import logger from './logger'
 import { analyzeDocument, hasApiKey, isOllamaAvailable } from './aiService'
 import { generateSmartDocNumber } from '../utils/helpers'
+import { writeBackToFrontmatter } from './obsidianService'
 
 /** 扫描间隔（毫秒） */
 const SCAN_INTERVAL = 30000
@@ -16,7 +17,9 @@ const ANALYSIS_TIMEOUT = 120000
 /** 每次扫描最多处理的文档数 */
 const MAX_PER_SCAN = 3
 /** 连续空扫描次数阈值，达到后进入待机 */
-const EMPTY_SWEEP_THRESHOLD = 2
+const EMPTY_SWEEP_THRESHOLD = 5
+/** 待机超时时间（毫秒），达到后挂起高性能进程 */
+const STANDBY_SUSPEND_TIMEOUT = 300000 // 5分钟
 
 class BackgroundAnalysisService {
   constructor() {
@@ -36,6 +39,10 @@ class BackgroundAnalysisService {
     this.onDocumentUpdated = null
     /** Electron IPC 分析器就绪状态 */
     this._analyzerReady = false
+    /** 是否已挂起（暂停 AI 分析功能） */
+    this._suspended = false
+    /** 待机挂起定时器 */
+    this._suspendTimer = null
   }
 
   /**
@@ -200,6 +207,27 @@ class BackgroundAnalysisService {
         })
         logger.info(`[AI] storage_write_success | id=${doc.id} | summaryLength=${(result.summary || '').length} | keywordCount=${(result.keywords || []).length}`)
 
+        // 将分析结果回写到 Obsidian 笔记（如果是 Obsidian 笔记）
+        if (doc.isObsidianNote && doc.localFilePath && doc.localFilePath.endsWith('.md')) {
+          try {
+            if (window.electronAPI && window.electronAPI.readRawFile) {
+              const fileResult = await window.electronAPI.readRawFile(doc.localFilePath)
+              if (fileResult.success) {
+                const readFile = async (path) => {
+                  const res = await window.electronAPI.readRawFile(path)
+                  return res.success ? Buffer.from(res.content, 'base64').toString('utf-8') : null
+                }
+                const writeFile = async (path, content) => {
+                  await window.electronAPI.saveUploadFile({ fileName: path.split('\\').pop(), content, isBase64: false })
+                }
+                await writeBackToFrontmatter(readFile, writeFile, doc.localFilePath, result)
+              }
+            }
+          } catch (err) {
+            logger.warn(`[Obsidian] 回写失败: ${doc.localFilePath}`, err.message)
+          }
+        }
+
         logger.info(`[BackgroundAnalysis] 分析完成: "${title || fileName}", smartTitle: "${result.smartTitle || '-'}"`)
         this._pendingIds.delete(doc.id)
 
@@ -252,6 +280,10 @@ class BackgroundAnalysisService {
     if (this._scanTimer) {
       clearTimeout(this._scanTimer)
       this._scanTimer = null
+    }
+    if (this._suspendTimer) {
+      clearTimeout(this._suspendTimer)
+      this._suspendTimer = null
     }
     logger.info('[BackgroundAnalysis] 服务已停止')
   }
@@ -321,7 +353,9 @@ class BackgroundAnalysisService {
         this._emptySweepCount++
         if (this._emptySweepCount >= EMPTY_SWEEP_THRESHOLD && !this._standby) {
           this._standby = true
-          logger.info(`[BackgroundAnalysis] 连续 ${EMPTY_SWEEP_THRESHOLD} 次空扫描，进入待机模式（等待文件变动唤醒）`)
+          logger.info(`[BackgroundAnalysis] 连续 ${EMPTY_SWEEP_THRESHOLD} 次空扫描，进入待机模式（等待文件变动唤醒，${STANDBY_SUSPEND_TIMEOUT/60000}分钟后挂起）`)
+          // 启动待机挂起定时器
+          this._startSuspendTimer()
         }
         return
       }
@@ -371,11 +405,17 @@ class BackgroundAnalysisService {
    */
   wakeUp() {
     if (!this._running) return false
-    if (!this._standby) {
-      logger.debug('[BackgroundAnalysis] 服务未处于待机模式，无需唤醒')
+    if (!this._standby && !this._suspended) {
+      logger.debug('[BackgroundAnalysis] 服务未处于待机或挂起模式，无需唤醒')
       return false
     }
+    // 清除挂起定时器
+    if (this._suspendTimer) {
+      clearTimeout(this._suspendTimer)
+      this._suspendTimer = null
+    }
     this._standby = false
+    this._suspended = false
     this._emptySweepCount = 0
     this._preheating = true
     logger.info('[BackgroundAnalysis] 文件变动触发唤醒，预热中（2秒后开始扫描）...')
@@ -387,6 +427,67 @@ class BackgroundAnalysisService {
       }
     }, 2000)
     return true
+  }
+
+  /**
+   * 启动待机挂起定时器
+   */
+  _startSuspendTimer() {
+    // 如果已有定时器，先清除
+    if (this._suspendTimer) {
+      clearTimeout(this._suspendTimer)
+    }
+    this._suspendTimer = setTimeout(() => {
+      this._suspend()
+    }, STANDBY_SUSPEND_TIMEOUT)
+    logger.info(`[BackgroundAnalysis] 待机挂起定时器已启动（${STANDBY_SUSPEND_TIMEOUT/60000}分钟后触发）`)
+  }
+
+  /**
+   * 挂起高性能进程
+   * 停止分析子进程，保留监听功能
+   */
+  _suspend() {
+    if (!this._running || this._suspended) return
+    this._suspended = true
+    this._standby = false
+    if (this._suspendTimer) {
+      clearTimeout(this._suspendTimer)
+      this._suspendTimer = null
+    }
+    // 通知 Electron 停止分析子进程
+    if (window.electronAPI && window.electronAPI.stopAnalyzer) {
+      window.electronAPI.stopAnalyzer()
+    }
+    logger.info('[BackgroundAnalysis] 已挂起高性能进程，仅保留监听功能')
+  }
+
+  /**
+   * 恢复挂起状态
+   * 重新启动分析子进程
+   */
+  resume() {
+    if (!this._running || !this._suspended) return false
+    this._suspended = false
+    // 通知 Electron 启动分析子进程
+    if (window.electronAPI && window.electronAPI.startAnalyzer) {
+      window.electronAPI.startAnalyzer()
+    }
+    logger.info('[BackgroundAnalysis] 已恢复高性能进程')
+    return true
+  }
+
+  /**
+   * 获取当前服务状态
+   */
+  getStatus() {
+    return {
+      running: this._running,
+      standby: this._standby,
+      suspended: this._suspended,
+      preheating: this._preheating,
+      pendingCount: this._pendingIds.size
+    }
   }
 }
 

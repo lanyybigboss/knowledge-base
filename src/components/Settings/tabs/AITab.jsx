@@ -261,39 +261,6 @@ export default function AITab() {
         </div>
       </div>
 
-      {/* AI 降级策略说明 */}
-      <div className="card">
-        <h3 className="card-title" style={{ marginBottom: 'var(--space-lg)' }}>
-          AI 分析降级策略
-        </h3>
-        <p className="settings-description">
-          文档 AI 分析采用多层降级策略，确保最大可用性：
-        </p>
-        <div className="ai-strategy-list">
-          <div className="ai-strategy-item">
-            <span className="ai-strategy-num">1</span>
-            <div>
-              <strong>优先：Ollama 本地模型</strong>
-              <p>免费、无网络依赖、隐私安全。优先调用本地 qwen2.5:7b 模型。</p>
-            </div>
-          </div>
-          <div className="ai-strategy-item">
-            <span className="ai-strategy-num">2</span>
-            <div>
-              <strong>备选：DeepSeek API</strong>
-              <p>当 Ollama 不可用时自动降级到云端 DeepSeek API，需要配置有效 API Key。</p>
-            </div>
-          </div>
-          <div className="ai-strategy-item">
-            <span className="ai-strategy-num">3</span>
-            <div>
-              <strong>兜底：自动分类</strong>
-              <p>当所有 AI 服务均失败时，文档仍可正常添加，归入&quot;其他&quot;分类，支持手动编辑。</p>
-            </div>
-          </div>
-        </div>
-      </div>
-
       {/* AI 分析管理 */}
       <div className="card">
         <h3 className="card-title" style={{ marginBottom: 'var(--space-lg)' }}>

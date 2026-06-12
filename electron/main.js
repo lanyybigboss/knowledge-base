@@ -8,15 +8,46 @@ const path = require('path')
 const fs = require('fs')
 const { execFile, spawn, fork } = require('child_process')
 const http = require('http')
+const storageIpcClient = require('./ipc/storageClient')  // v1.7.0 解耦：storage IPC 客户端
 
 // ===== 版本互斥系统 =====
 // 确保同一时间只有一个版本运行：开机多个版本同时启动时，只保留最高版本
+// 三层防御：单实例锁 + 文件锁 + 心跳检测
 const VERSION_LOCK_FILE = path.join(app.getPath('userData'), 'version-lock.json')
 const HEARTBEAT_INTERVAL = 10000   // 心跳间隔 10 秒
 const STALE_TIMEOUT = 30000        // 锁文件超过 30 秒无心跳视为过期
 
 let versionLockTimer = null
 let shouldExitByVersion = false
+
+/**
+ * 在应用启动最早期请求单实例锁
+ * 阻止同一应用启动多次（这是 Electron 官方推荐方案）
+ */
+function requestSingleInstanceLock() {
+  const gotLock = app.requestSingleInstanceLock({
+    pid: process.pid,
+    version: app.getVersion(),
+    path: process.execPath
+  })
+  if (!gotLock) {
+    console.log(`[版本互斥] 已有实例运行，当前实例 PID=${process.pid} 立即退出`)
+    shouldExitByVersion = true
+    app.quit()
+    return false
+  }
+  // 监听 second-instance 事件
+  app.on('second-instance', (event, argv, workingDirectory) => {
+    console.log(`[版本互斥] 检测到第二个实例启动尝试，参数: ${argv.join(' ')}`)
+    // 第二个实例会被自动终止，这里可以激活已有窗口
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore()
+      mainWindow.show()
+      mainWindow.focus()
+    }
+  })
+  return true
+}
 
 /**
  * 解析语义化版本号为可比较的数组 [major, minor, patch]
@@ -86,22 +117,25 @@ function performVersionCheck() {
       version: currentVersion,
       path: currentPath,
       pid: currentPid,
-      timestamp: now
+      timestamp: now,
+      startTime: now
     })
     return false
   }
 
   // 检查锁是否过期（持有者可能已崩溃）
   const isStale = (now - lock.timestamp) > STALE_TIMEOUT
-  const pidExists = isProcessAlive(lock.pid)
+  const pidExists = lock.pid ? isProcessAlive(lock.pid) : false
 
   if (isStale || !pidExists) {
     // 锁已过期或持有进程已死，接管锁
+    console.log(`[版本互斥] 锁过期或持有进程已死 (isStale=${isStale}, pidExists=${pidExists})，当前实例接管`)
     writeVersionLock({
       version: currentVersion,
       path: currentPath,
       pid: currentPid,
-      timestamp: now
+      timestamp: now,
+      startTime: now
     })
     return false
   }
@@ -110,41 +144,63 @@ function performVersionCheck() {
   const cmp = compareVersions(currentVersion, lock.version)
   if (cmp > 0) {
     // 当前版本更高，接管锁（低版本实例会在心跳检测中自行退出）
+    console.log(`[版本互斥] 当前版本 ${currentVersion} 更高，接管锁（低版本 PID=${lock.pid} 将退出）`)
     writeVersionLock({
       version: currentVersion,
       path: currentPath,
       pid: currentPid,
-      timestamp: now
+      timestamp: now,
+      startTime: now
     })
     return false
   } else if (cmp === 0) {
-    // 版本相同，不允许重复运行
+    // 版本相同 - 但已有实例在运行（单实例锁应该已经拦截，这是防御性检查）
+    console.warn(`[版本互斥] 同版本实例已在运行 (PID=${lock.pid})，当前实例退出`)
     return true
   } else {
     // 当前版本更低，退出
+    console.log(`[版本互斥] 当前版本 ${currentVersion} 低于 ${lock.version}，退出`)
     return true
   }
 }
 
 /**
  * 启动版本锁心跳定时器
- * 持有锁的实例定期更新时间戳；如果发现自己被更高版本取代，自行退出
+ * 持有锁的实例定期更新时间戳；如果发现自己被更高版本取代或被接管，立即退出
  */
 function startVersionHeartbeat() {
   const currentVersion = app.getVersion()
+  const currentPid = process.pid
   versionLockTimer = setInterval(() => {
     const lock = readVersionLock()
-    if (lock && lock.version !== currentVersion) {
-      // 被更高版本取代，自行退出
-      console.log(`[版本互斥] 检测到更高版本 ${lock.version}，当前 ${currentVersion} 即将退出`)
+
+    // 情况 1: 锁被删除 → 异常状态，强制退出
+    if (!lock) {
+      console.warn('[版本互斥] 锁文件丢失，当前实例强制退出')
+      forceQuit = true
       app.quit()
       return
     }
-    // 更新心跳时间戳
-    if (lock) {
-      lock.timestamp = Date.now()
-      writeVersionLock(lock)
+
+    // 情况 2: 锁的 PID 变了（被其他实例接管）→ 立即退出
+    if (lock.pid !== currentPid) {
+      console.warn(`[版本互斥] 检测到锁被 PID=${lock.pid} 接管，当前 PID=${currentPid} 立即退出`)
+      forceQuit = true
+      app.quit()
+      return
     }
+
+    // 情况 3: 版本号变了（被更高版本取代）→ 立即退出
+    if (lock.version !== currentVersion) {
+      console.warn(`[版本互斥] 检测到更高版本 ${lock.version}，当前 ${currentVersion} 立即退出`)
+      forceQuit = true
+      app.quit()
+      return
+    }
+
+    // 正常情况：更新心跳
+    lock.timestamp = Date.now()
+    writeVersionLock(lock)
   }, HEARTBEAT_INTERVAL)
 }
 
@@ -160,13 +216,28 @@ function stopVersionHeartbeat() {
 
 /**
  * 清理版本锁文件（仅当自己是锁持有者时）
+ * 使用原子重命名而非 unlink，避免权限竞争
  */
 function cleanupVersionLock() {
-  const lock = readVersionLock()
-  if (lock && lock.pid === process.pid) {
-    try {
-      fs.unlinkSync(VERSION_LOCK_FILE)
-    } catch (e) { /* ignore */ }
+  try {
+    const lock = readVersionLock()
+    if (lock && lock.pid === process.pid) {
+      // 二次确认：自己真的是锁持有者
+      const stat = fs.statSync(VERSION_LOCK_FILE)
+      // 仅在最近 1 分钟内更新过时才清理（避免误删别人的锁）
+      if ((Date.now() - stat.mtimeMs) < 60000) {
+        fs.unlinkSync(VERSION_LOCK_FILE)
+        console.log(`[版本互斥] 锁文件已清理 (PID=${process.pid})`)
+      } else {
+        console.warn(`[版本互斥] 锁文件 mtime 过旧 (${Math.round((Date.now() - stat.mtimeMs)/1000)}s)，不清理`)
+      }
+    } else if (lock) {
+      console.log(`[版本互斥] 当前 PID=${process.pid} 不是锁持有者 (持有者 PID=${lock.pid})，不清理`)
+    }
+  } catch (e) {
+    if (e.code !== 'ENOENT') {
+      console.warn(`[版本互斥] 清理锁文件失败: ${e.message}`)
+    }
   }
 }
 
@@ -222,6 +293,7 @@ let UPLOADS_DIR
 let CONFIG_DIR
 let WATCHER_STATE_FILE
 let SYNC_FILE
+let LOG_FILE
 
 function initStorageDirectories() {
   const isDev = process.argv.includes('--dev')
@@ -244,11 +316,80 @@ function initStorageDirectories() {
 
   WATCHER_STATE_FILE = path.join(CONFIG_DIR, 'watcher-state.json')
   SYNC_FILE = path.join(CONFIG_DIR, 'documents-sync.json')
+  LOG_FILE = path.join(CONFIG_DIR, 'app.log')
 
   console.log(`[知识库] 数据存储目录: ${STORAGE_DIR}`)
   process.env.KB_STORAGE_DIR = STORAGE_DIR
   process.env.KB_UPLOADS_DIR = UPLOADS_DIR
 }
+
+// ===== 日志文件写入（供调试接口读取）=====
+let _logBuffer = []
+let _logFlushTimer = null
+const LOG_FLUSH_INTERVAL = 3000
+const LOG_MAX_SIZE = 1024 * 1024 // 1MB
+
+function writeLogToFile(level, ...args) {
+  const timestamp = new Date().toISOString()
+  const message = args.map(a => {
+    if (typeof a === 'object') {
+      try { return JSON.stringify(a) } catch (e) { return String(a) }
+    }
+    return String(a)
+  }).join(' ')
+  _logBuffer.push(`[${timestamp}] [${level}] ${message}`)
+
+  // 达到一定数量时立即刷盘
+  if (_logBuffer.length >= 10) {
+    flushLogToFile()
+  } else if (!_logFlushTimer) {
+    _logFlushTimer = setTimeout(flushLogToFile, LOG_FLUSH_INTERVAL)
+  }
+}
+
+function flushLogToFile() {
+  if (_logFlushTimer) {
+    clearTimeout(_logFlushTimer)
+    _logFlushTimer = null
+  }
+  if (_logBuffer.length === 0 || !LOG_FILE) return
+  try {
+    const data = _logBuffer.join('\n') + '\n'
+    _logBuffer = []
+    fs.appendFileSync(LOG_FILE, data, 'utf-8')
+    // 限制日志文件大小
+    const stat = fs.statSync(LOG_FILE)
+    if (stat.size > LOG_MAX_SIZE) {
+      // 保留后半部分
+      const content = fs.readFileSync(LOG_FILE, 'utf-8')
+      const lines = content.split('\n')
+      const half = Math.floor(lines.length / 2)
+      fs.writeFileSync(LOG_FILE, lines.slice(half).join('\n'), 'utf-8')
+    }
+  } catch (e) {
+    // 写日志失败不应阻塞主流程
+  }
+}
+
+// 拦截 console 输出到文件
+const _originalLog = console.log
+const _originalError = console.error
+const _originalWarn = console.warn
+console.log = (...args) => {
+  _originalLog.apply(console, args)
+  writeLogToFile('INFO', ...args)
+}
+console.error = (...args) => {
+  _originalError.apply(console, args)
+  writeLogToFile('ERROR', ...args)
+}
+console.warn = (...args) => {
+  _originalWarn.apply(console, args)
+  writeLogToFile('WARN', ...args)
+}
+
+// 应用退出时刷盘
+app.on('before-quit', () => flushLogToFile())
 
 // ===== 瓦特（watcher）状态管理（多文件夹支持） =====
 let watcherMap = {}        // { [folderPath]: chokidar instance }
@@ -922,6 +1063,143 @@ ipcMain.handle('sync-timestamp', () => {
     return { success: false, error: e.message }
   }
 })
+
+// ===== 调试接口 IPC（供 Trae / DevTools 调用）=====
+ipcMain.handle('debug-get-status', () => {
+  try {
+    return {
+      success: true,
+      data: {
+        electron: {
+          pid: process.pid,
+          version: app.getVersion(),
+          platform: process.platform,
+          arch: process.arch,
+          nodeVersion: process.version,
+          uptime: Math.round(process.uptime())
+        },
+        analyzer: {
+          ready: analyzerReady,
+          pid: analyzerProcess ? analyzerProcess.pid : null
+        },
+        watcher: getCombinedWatcherStatus(),
+        storage: {
+          storageDir: STORAGE_DIR,
+          uploadsDir: UPLOADS_DIR,
+          totalSize: getDirSize(UPLOADS_DIR)
+        },
+        memory: process.memoryUsage(),
+        timestamp: new Date().toISOString()
+      }
+    }
+  } catch (e) {
+    return { success: false, error: e.message }
+  }
+})
+
+ipcMain.handle('debug-get-logs', (_, lines) => {
+  try {
+    const count = Math.min(parseInt(lines) || 100, 1000)
+    const logFile = path.join(CONFIG_DIR, 'app.log')
+    let logs = []
+    if (fs.existsSync(logFile)) {
+      const content = fs.readFileSync(logFile, 'utf-8')
+      const allLines = content.split('\n').filter(l => l.trim())
+      logs = allLines.slice(-count)
+    }
+    return { success: true, data: { logs, count: logs.length, totalLines: logs.length } }
+  } catch (e) {
+    return { success: false, error: e.message }
+  }
+})
+
+ipcMain.handle('debug-suspend', () => {
+  try {
+    // 挂起分析子进程
+    if (analyzerProcess && analyzerReady) {
+      analyzerProcess.send({ type: 'suspend' })
+      return { success: true, message: '分析子进程已挂起' }
+    }
+    return { success: false, message: '分析子进程未运行' }
+  } catch (e) {
+    return { success: false, error: e.message }
+  }
+})
+
+ipcMain.handle('debug-resume', () => {
+  try {
+    if (analyzerProcess && analyzerReady) {
+      analyzerProcess.send({ type: 'resume' })
+      return { success: true, message: '分析子进程已恢复' }
+    }
+    return { success: false, message: '分析子进程未运行' }
+  } catch (e) {
+    return { success: false, error: e.message }
+  }
+})
+
+ipcMain.handle('debug-manual-analyze', async (_, docId) => {
+  try {
+    if (!analyzerProcess || !analyzerReady) {
+      return { success: false, error: '分析子进程未就绪' }
+    }
+    if (!docId || typeof docId !== 'string') {
+      return { success: false, error: 'docId 必填且为字符串' }
+    }
+    // 从渲染进程读取文档详情，补全 filePath/fileName/fileType/title
+    // v1.7.0 解耦：通过 storage IPC 客户端调用，替代字符串注入
+    let doc = null
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      doc = await storageIpcClient.getDocument(docId)
+    }
+    if (!doc) {
+      return { success: false, error: `文档不存在: ${docId}` }
+    }
+    if (!doc.filePath) {
+      return { success: false, error: `文档无 filePath 字段: ${docId}` }
+    }
+    if (!fs.existsSync(doc.filePath)) {
+      return { success: false, error: `文件不存在: ${doc.filePath}` }
+    }
+    analyzerProcess.send({
+      type: 'analyze',
+      id: docId,
+      filePath: doc.filePath,
+      fileName: doc.fileName || doc.title,
+      fileType: doc.fileType,
+      title: doc.title
+    })
+    return { success: true, message: `已触发分析: ${docId} → ${doc.filePath}` }
+  } catch (e) {
+    return { success: false, error: e.message }
+  }
+})
+
+ipcMain.handle('debug-health-check', async () => {
+  const checks = {
+    electron: { ok: true, info: '运行中' },
+    analyzer: { ok: analyzerReady, info: analyzerReady ? '就绪' : '未就绪' },
+    watcher: { ok: Object.keys(watcherMap).length > 0, info: `${Object.keys(watcherMap).length} 个监控` },
+    ollama: { ok: false, info: '未检测' }
+  }
+  // Ollama 健康检查
+  try {
+    const result = await new Promise((resolve) => {
+      const req = http.get('http://localhost:11434/api/tags', { timeout: 2000 }, (res) => {
+        let data = ''
+        res.on('data', (chunk) => { data += chunk })
+        res.on('end', () => resolve({ ok: res.statusCode === 200, data }))
+      })
+      req.on('error', () => resolve({ ok: false, error: '连接失败' }))
+      req.on('timeout', () => { req.destroy(); resolve({ ok: false, error: '超时' }) })
+    })
+    checks.ollama = { ok: result.ok, info: result.ok ? '运行中' : (result.error || '不可用') }
+  } catch (e) {
+    checks.ollama = { ok: false, info: e.message }
+  }
+  const allOk = Object.values(checks).every(c => c.ok)
+  return { success: true, data: { healthy: allOk, checks, timestamp: new Date().toISOString() } }
+})
 } // end registerIpcHandlers
 
 // ===== 后台分析子进程管理 =====
@@ -1003,6 +1281,233 @@ ipcMain.handle('analyzer-status', () => ({
   ready: analyzerReady,
   pid: analyzerProcess?.pid || null
 }))
+
+// ===== HTTP Debug Bridge（供 Trae 等外部工具调用）=====
+const HTTP_BRIDGE_PORT = 7777
+const HTTP_BRIDGE_HOST = '127.0.0.1' // 仅本机访问
+let _httpBridgeServer = null
+
+/**
+ * 简易 JSON 响应封装
+ */
+function sendJSON(res, status, data) {
+  res.writeHead(status, {
+    'Content-Type': 'application/json; charset=utf-8',
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type'
+  })
+  res.end(JSON.stringify(data, null, 2))
+}
+
+/**
+ * 读取请求体
+ */
+function readRequestBody(req) {
+  return new Promise((resolve) => {
+    let data = ''
+    req.on('data', (chunk) => { data += chunk })
+    req.on('end', () => {
+      try { resolve(JSON.parse(data)) }
+      catch (e) { resolve({}) }
+    })
+  })
+}
+
+/**
+ * 启动 HTTP Bridge
+ */
+function startHttpBridge() {
+  if (_httpBridgeServer) return
+  const server = http.createServer(async (req, res) => {
+    const url = new URL(req.url, `http://${req.headers.host}`)
+    const pathname = url.pathname
+
+    // CORS 预检
+    if (req.method === 'OPTIONS') {
+      res.writeHead(204, {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type'
+      })
+      res.end()
+      return
+    }
+
+    try {
+      // GET /debug/status
+      if (pathname === '/debug/status' && req.method === 'GET') {
+        return sendJSON(res, 200, {
+          success: true,
+          electron: { pid: process.pid, version: app.getVersion(), platform: process.platform, uptime: Math.round(process.uptime()) },
+          analyzer: { ready: analyzerReady, pid: analyzerProcess?.pid || null },
+          watcher: getCombinedWatcherStatus(),
+          storage: { storageDir: STORAGE_DIR, uploadsDir: UPLOADS_DIR, totalSize: getDirSize(UPLOADS_DIR) },
+          memory: process.memoryUsage(),
+          timestamp: new Date().toISOString()
+        })
+      }
+
+      // GET /debug/logs?lines=100
+      if (pathname === '/debug/logs' && req.method === 'GET') {
+        const count = Math.min(parseInt(url.searchParams.get('lines')) || 100, 1000)
+        flushLogToFile()
+        let logs = []
+        if (fs.existsSync(LOG_FILE)) {
+          const content = fs.readFileSync(LOG_FILE, 'utf-8')
+          const allLines = content.split('\n').filter(l => l.trim())
+          logs = allLines.slice(-count)
+        }
+        return sendJSON(res, 200, { success: true, count: logs.length, logs })
+      }
+
+      // GET /debug/health
+      if (pathname === '/debug/health' && req.method === 'GET') {
+        const checks = {
+          electron: { ok: true, info: '运行中' },
+          analyzer: { ok: analyzerReady, info: analyzerReady ? '就绪' : '未就绪' },
+          watcher: { ok: Object.keys(watcherMap).length > 0, info: `${Object.keys(watcherMap).length} 个监控` },
+          ollama: { ok: false, info: '未检测' }
+        }
+        try {
+          const result = await new Promise((resolve) => {
+            const r = http.get('http://localhost:11434/api/tags', { timeout: 2000 }, (rsp) => {
+              let body = ''
+              rsp.on('data', (c) => { body += c })
+              rsp.on('end', () => resolve({ ok: rsp.statusCode === 200, data: body }))
+            })
+            r.on('error', () => resolve({ ok: false }))
+            r.on('timeout', () => { r.destroy(); resolve({ ok: false }) })
+          })
+          checks.ollama = { ok: result.ok, info: result.ok ? '运行中' : '不可用' }
+        } catch (e) { /* ignore */ }
+        return sendJSON(res, 200, { success: true, healthy: Object.values(checks).every(c => c.ok), checks })
+      }
+
+      // POST /debug/suspend
+      if (pathname === '/debug/suspend' && req.method === 'POST') {
+        if (analyzerProcess && analyzerReady) {
+          analyzerProcess.send({ type: 'suspend' })
+          return sendJSON(res, 200, { success: true, message: '分析子进程已挂起' })
+        }
+        return sendJSON(res, 200, { success: false, message: '分析子进程未运行' })
+      }
+
+      // POST /debug/resume
+      if (pathname === '/debug/resume' && req.method === 'POST') {
+        if (analyzerProcess && analyzerReady) {
+          analyzerProcess.send({ type: 'resume' })
+          return sendJSON(res, 200, { success: true, message: '分析子进程已恢复' })
+        }
+        return sendJSON(res, 200, { success: false, message: '分析子进程未运行' })
+      }
+
+      // POST /debug/analyze
+      if (pathname === '/debug/analyze' && req.method === 'POST') {
+        const body = await readRequestBody(req)
+        const { docId } = body
+        if (!docId) return sendJSON(res, 400, { success: false, error: '缺少 docId' })
+        if (!analyzerProcess || !analyzerReady) {
+          return sendJSON(res, 503, { success: false, error: '分析子进程未就绪' })
+        }
+        // 从渲染进程读取文档详情，补全 filePath/fileName/fileType/title
+        // v1.7.0 解耦：通过 storage IPC 客户端调用
+        let doc = null
+        try {
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            doc = await storageIpcClient.getDocument(docId)
+          }
+        } catch (e) { /* ignore */ }
+        if (!doc) return sendJSON(res, 404, { success: false, error: `文档不存在: ${docId}` })
+        if (!doc.filePath) return sendJSON(res, 400, { success: false, error: `文档无 filePath: ${docId}` })
+        if (!fs.existsSync(doc.filePath)) return sendJSON(res, 404, { success: false, error: `文件不存在: ${doc.filePath}` })
+        analyzerProcess.send({
+          type: 'analyze',
+          id: docId,
+          filePath: doc.filePath,
+          fileName: doc.fileName || doc.title,
+          fileType: doc.fileType,
+          title: doc.title
+        })
+        return sendJSON(res, 200, { success: true, message: `已触发分析: ${docId} → ${doc.filePath}` })
+      }
+
+      // POST /debug/ai/chat - 直接测试 AI
+      if (pathname === '/debug/ai/chat' && req.method === 'POST') {
+        const body = await readRequestBody(req)
+        const { prompt } = body
+        if (!prompt) return sendJSON(res, 400, { success: false, error: '缺少 prompt' })
+        try {
+          const result = await new Promise((resolve) => {
+            const r = http.get('http://localhost:11434/api/tags', { timeout: 2000 }, (rsp) => resolve(rsp.statusCode === 200))
+            r.on('error', () => resolve(false))
+            r.on('timeout', () => { r.destroy(); resolve(false) })
+          })
+          return sendJSON(res, 200, { success: true, ollamaReachable: result })
+        } catch (e) {
+          return sendJSON(res, 200, { success: true, ollamaReachable: false, error: e.message })
+        }
+      }
+
+      // GET /debug/docs/pending - 待分析文档
+      if (pathname === '/debug/docs/pending' && req.method === 'GET') {
+        // v1.7.0 解耦：通过 storage IPC 客户端调用，替代字符串注入
+        try {
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            const docs = await storageIpcClient.getDocumentMetadata(100, 0)
+            const pending = (docs || [])
+              .filter(d => !d.aiAnalyzed)
+              .map(d => ({ id: d.id, title: d.title || d.fileName, fileName: d.fileName }))
+            return sendJSON(res, 200, { success: true, count: pending.length, docs: pending })
+          }
+        } catch (e) {
+          return sendJSON(res, 200, { success: false, error: e.message })
+        }
+        return sendJSON(res, 200, { success: false, error: '渲染进程未就绪' })
+      }
+
+      // 404
+      return sendJSON(res, 404, { success: false, error: 'Not Found', availableEndpoints: [
+        'GET  /debug/status',
+        'GET  /debug/logs?lines=N',
+        'GET  /debug/health',
+        'POST /debug/suspend',
+        'POST /debug/resume',
+        'POST /debug/analyze  {docId}',
+        'POST /debug/ai/chat  {prompt}',
+        'GET  /debug/docs/pending'
+      ]})
+    } catch (e) {
+      return sendJSON(res, 500, { success: false, error: e.message })
+    }
+  })
+
+  server.on('error', (err) => {
+    if (err.code === 'EADDRINUSE') {
+      console.warn(`[DebugBridge] 端口 ${HTTP_BRIDGE_PORT} 被占用，尝试下一个端口`)
+      server.listen(HTTP_BRIDGE_PORT + 1, HTTP_BRIDGE_HOST)
+    } else {
+      console.error('[DebugBridge] 启动失败:', err.message)
+    }
+  })
+
+  server.listen(HTTP_BRIDGE_PORT, HTTP_BRIDGE_HOST, () => {
+    console.log(`[DebugBridge] HTTP 服务已启动: http://${HTTP_BRIDGE_HOST}:${HTTP_BRIDGE_PORT}`)
+  })
+
+  _httpBridgeServer = server
+}
+
+/**
+ * 停止 HTTP Bridge
+ */
+function stopHttpBridge() {
+  if (_httpBridgeServer) {
+    _httpBridgeServer.close()
+    _httpBridgeServer = null
+    console.log('[DebugBridge] HTTP 服务已停止')
+  }
+}
 
 // ===== 开机静默启动配置 =====
 // 检测是否通过开机自启动（带 --hidden 参数）
@@ -1115,6 +1620,9 @@ function createWindow() {
     backgroundColor: '#0f172a'  // 匹配深色主题背景色
   })
 
+  // v1.7.0 解耦：注入 webContents 到 storage IPC 客户端
+  storageIpcClient.setWebContents(mainWindow.webContents)
+
   // 开发模式加载 Vite dev server，生产模式加载打包文件
   if (isDev) {
     mainWindow.loadURL('http://localhost:3000')
@@ -1154,7 +1662,16 @@ function createWindow() {
 
 // ===== 版本互斥：在应用启动前检查 =====
 // 必须在 app.whenReady() 之前执行，确保低版本尽快退出
+// 第一层防御：单实例锁（Electron 官方 API）—— 这是最快最可靠的拦截
+const _singleInstanceLockPassed = requestSingleInstanceLock()
+
 const _versionSelfCheckPassed = (() => {
+  // 如果单实例锁没拿到（已有实例运行），直接退出
+  if (!_singleInstanceLockPassed) {
+    console.log(`[版本互斥] 单实例锁未获取，跳过文件锁检查`)
+    return false
+  }
+
   const currentVersion = app.getVersion()
   const currentPath = process.execPath
   console.log(`[版本互斥] 启动检查 - 版本: ${currentVersion}, 路径: ${currentPath}`)
@@ -1192,6 +1709,9 @@ app.whenReady().then(() => {
   // 自动启动 Ollama（如未运行）
   startOllamaIfNotRunning()
 
+  // 启动 HTTP Debug Bridge（供 Trae 等外部工具调用）
+  startHttpBridge()
+
   // 初始化开机自启动设置（保持上次的用户选择）
   const loginSettings = app.getLoginItemSettings()
   console.log(`[开机自启] 当前状态: openAtLogin=${loginSettings.openAtLogin} | execPath=${process.execPath}`)
@@ -1222,6 +1742,9 @@ app.whenReady().then(() => {
 // 确保真正退出时设置标志并清理
 app.on('before-quit', async () => {
   forceQuit = true
+
+  // 停止 HTTP Debug Bridge
+  stopHttpBridge()
 
   // 停止版本心跳并清理锁文件
   stopVersionHeartbeat()

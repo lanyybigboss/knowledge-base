@@ -7,7 +7,7 @@ import { BaseAIAdapter } from './base'
 import logger from '../logger'
 
 const OLLAMA_BASE_URL = 'http://localhost:11434'
-const OLLAMA_MODELS = ['qwen2.5:7b-instruct-q4_K_M']
+const OLLAMA_MODELS = ['qwen2.5:7b-instruct-q4_K_M', 'qwen3:8b']
 const HEALTH_TTL = 30000
 
 /** 健康检查缓存 */
@@ -79,12 +79,16 @@ export class OllamaAdapter extends BaseAIAdapter {
    * 发送聊天请求到 Ollama（模型降级链：7b → 3b）
    */
   async chat(systemPrompt, userPrompt, options = {}) {
-    const { timeoutMs = 180000 } = options
+    const { timeoutMs = 300000 } = options // qwen3:8b 需要更长时间，设置为 5 分钟
     const startTime = Date.now()
 
     for (const model of OLLAMA_MODELS) {
       const controller = new AbortController()
       const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
+
+      // qwen3 系列默认开启思考，需添加 /no_think 禁用
+      const thinkDisable = model.startsWith('qwen3') ? '/no_think\n\n' : ''
+      const fullPrompt = thinkDisable + userPrompt + '\n\n请严格返回 JSON 格式，不要包含任何其他文字。'
 
       try {
         logger.info(`[AI] request_start | model=Ollama(${model}) | promptLength=${userPrompt.length}`)
@@ -96,10 +100,11 @@ export class OllamaAdapter extends BaseAIAdapter {
             model,
             messages: [
               { role: 'system', content: systemPrompt },
-              { role: 'user', content: userPrompt + '\n\n请严格返回 JSON 格式，不要包含任何其他文字。' }
+              { role: 'user', content: fullPrompt }
             ],
             stream: false,
-            format: 'json'
+            format: 'json',
+            think: false // 明确禁用思考模式
           }),
           signal: controller.signal
         })

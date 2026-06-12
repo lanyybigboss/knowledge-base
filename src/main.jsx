@@ -2,7 +2,15 @@ import React from 'react'
 import ReactDOM from 'react-dom/client'
 import App from './App'
 import logger from './services/logger'
+import { installStorageBridge } from './services/storageBridge'
 import './styles/global.css'
+
+// 注册 Storage IPC bridge（v1.7.0 解耦）：
+// 让主进程通过标准 IPC 调用渲染进程的 storage 服务
+// 替代之前的 executeJavaScript('window.storageService?...') 字符串注入
+if (typeof window !== 'undefined' && window.electronAPI) {
+  installStorageBridge()
+}
 
 // 创建 React 错误边界
 class ErrorBoundary extends React.Component {

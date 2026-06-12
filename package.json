@@ -1,6 +1,6 @@
 {
   "name": "knowledge-base-frontend",
-  "version": "1.2.0",
+  "version": "1.7.0",
   "description": "企业级知识库管理系统",
   "main": "electron/main.js",
   "private": true,

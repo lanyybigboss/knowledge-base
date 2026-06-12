@@ -78,5 +78,26 @@ contextBridge.exposeInMainWorld('electronAPI', {
     const handler = (_, data) => callback(data)
     ipcRenderer.on('analyzer-error', handler)
     return () => ipcRenderer.removeListener('analyzer-error', handler)
+  },
+
+  // ===== 调试接口（供 Trae 等外部工具调用）=====
+  debugGetStatus: () => ipcRenderer.invoke('debug-get-status'),
+  debugGetLogs: (lines) => ipcRenderer.invoke('debug-get-logs', lines),
+  debugSuspend: () => ipcRenderer.invoke('debug-suspend'),
+  debugResume: () => ipcRenderer.invoke('debug-resume'),
+  debugManualAnalyze: (docId) => ipcRenderer.invoke('debug-manual-analyze', docId),
+  debugHealthCheck: () => ipcRenderer.invoke('debug-health-check'),
+
+  // ===== v1.7.0 解耦：Storage IPC Bridge =====
+  // 让主进程通过 webContents.send 主动调用渲染进程的 storage 服务
+  // 渲染进程通过 ipcBridge.on 监听 + ipcBridge.send 回执
+  // （替代主进程中的 executeJavaScript 字符串注入）
+  ipcBridge: {
+    on: (channel, callback) => {
+      const handler = (_, payload) => callback(payload)
+      ipcRenderer.on(channel, handler)
+      return () => ipcRenderer.removeListener(channel, handler)
+    },
+    send: (channel, data) => ipcRenderer.send(channel, data)
   }
 })
