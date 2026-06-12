@@ -124,6 +124,9 @@ class LoggerService {
     this._saveToStorage()
     this._notify(entry)
 
+    // 转发到主进程 app.log（仅 Electron 环境）
+    this._forwardToMain(entry)
+
     // 同时输出到控制台
     const prefix = `[${entry.time}] [${level.label}]`
     if (level.priority >= LOG_LEVELS.ERROR.priority) {
@@ -155,6 +158,17 @@ class LoggerService {
 
   fatal(message, data = null) {
     return this._log(LOG_LEVELS.FATAL, message, data)
+  }
+
+  /**
+   * 转发日志到主进程 app.log（Electron 环境）
+   */
+  _forwardToMain(entry) {
+    try {
+      if (window.electronAPI && window.electronAPI.logForward) {
+        window.electronAPI.logForward(entry.level, entry.message, entry.data)
+      }
+    } catch (e) { /* 转发失败不应阻塞主流程 */ }
   }
 
   /**

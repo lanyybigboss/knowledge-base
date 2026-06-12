@@ -99,5 +99,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
       return () => ipcRenderer.removeListener(channel, handler)
     },
     send: (channel, data) => ipcRenderer.send(channel, data)
-  }
+  },
+
+  // ===== 渲染进程日志转发到主进程 app.log =====
+  logForward: (level, message, data) => ipcRenderer.send('renderer-log', { level, message, data })
 })

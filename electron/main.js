@@ -1064,6 +1064,14 @@ ipcMain.handle('sync-timestamp', () => {
   }
 })
 
+// ===== 渲染进程日志转发到 app.log =====
+ipcMain.on('renderer-log', (_, entry) => {
+  if (!entry) return
+  const prefix = `[Renderer]`
+  const dataStr = entry.data ? ` | ${entry.data}` : ''
+  writeLogToFile(entry.level || 'INFO', `${prefix} ${entry.message}${dataStr}`)
+})
+
 // ===== 调试接口 IPC（供 Trae / DevTools 调用）=====
 ipcMain.handle('debug-get-status', () => {
   try {
