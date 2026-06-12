@@ -19,8 +19,8 @@ const path = require('path')
 
 // ===== 配置 =====
 const OLLAMA_BASE_URL = 'http://localhost:11434'
-const OLLAMA_MODEL = 'qwen2.5:7b-instruct-q4_K_M'
-const AI_TIMEOUT = 180000
+const OLLAMA_MODELS = ['qwen2.5:7b-instruct-q4_K_M', 'qwen3:8b']
+const AI_TIMEOUT = 300000 // 5 分钟（适配 qwen3:8b）
 
 // ===== 日志（子进程用 console，因为没有 logger 模块） =====
 function log(level, ...args) {
@@ -133,32 +133,44 @@ const SYSTEM_PROMPT = `你是一个专业的文档分析助手。请对以下文
 严格返回 JSON 格式，不要包含任何其他文字。`
 
 async function callOllama(systemPrompt, userPrompt) {
-  const controller = new AbortController()
-  const timeoutId = setTimeout(() => controller.abort(), AI_TIMEOUT)
+  for (const model of OLLAMA_MODELS) {
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), AI_TIMEOUT)
 
-  try {
-    const response = await fetch(`${OLLAMA_BASE_URL}/api/chat`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: OLLAMA_MODEL,
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt + '\n\n请严格返回 JSON 格式，不要包含任何其他文字。' }
-        ],
-        stream: false,
-        format: 'json'
-      }),
-      signal: controller.signal
-    })
+    // qwen3 系列自动添加 /no_think 禁用思维链
+    const thinkDisable = model.startsWith('qwen3') ? '/no_think\n\n' : ''
+    const fullPrompt = thinkDisable + userPrompt + '\n\n请严格返回 JSON 格式，不要包含任何其他文字。'
 
-    if (!response.ok) throw new Error(`Ollama HTTP ${response.status}`)
+    try {
+      log('INFO', `请求 Ollama 模型: ${model}`)
+      const response = await fetch(`${OLLAMA_BASE_URL}/api/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model,
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: fullPrompt }
+          ],
+          stream: false,
+          format: 'json',
+          think: false // 明确禁用思考模式
+        }),
+        signal: controller.signal
+      })
 
-    const data = await response.json()
-    return data.message?.content || ''
-  } finally {
-    clearTimeout(timeoutId)
+      if (!response.ok) throw new Error(`Ollama HTTP ${response.status}`)
+
+      const data = await response.json()
+      return data.message?.content || ''
+    } catch (err) {
+      log('WARN', `Ollama ${model} 失败: ${err.message}，尝试下一个模型...`)
+      continue
+    } finally {
+      clearTimeout(timeoutId)
+    }
   }
+  throw new Error('所有 Ollama 模型均不可用')
 }
 
 function safeParseJson(rawText) {
@@ -208,6 +220,13 @@ async function handleAnalyze(msg) {
   const { id, filePath, fileName, fileType, title } = msg
 
   try {
+    // 防护：filePath 缺失
+    if (!filePath || typeof filePath !== 'string') {
+      log('WARN', `文档 ${id} 缺少 filePath，跳过分析`)
+      process.send({ type: 'result', id, data: { _fallback: true, reason: '缺少文件路径' } })
+      return
+    }
+
     // 阶段 1：读取文件文本
     report(id, 'reading', 0, '开始处理')
     const content = await extractText(filePath, fileType, id)
