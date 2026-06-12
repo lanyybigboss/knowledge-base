@@ -24,7 +24,7 @@ module.exports = defineConfig({
   webServer: {
     command: 'npx vite --port 3000',
     url: 'http://localhost:3000',
-    reuseExistingServer: false,
+    reuseExistingServer: true,  // 复用已运行的 Vite（如 Electron dev 模式）
     timeout: 30000,
   },
 });

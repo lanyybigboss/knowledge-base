@@ -3,12 +3,15 @@
  * v2.1 - 版本互斥：多实例启动时只保留最高版本
  */
 
-const { app, BrowserWindow, ipcMain, dialog, shell, Menu, Tray, nativeImage } = require('electron')
+const { app, BrowserWindow, ipcMain, Menu, Tray, nativeImage } = require('electron')
 const path = require('path')
 const fs = require('fs')
-const { execFile, spawn, fork } = require('child_process')
+const { spawn, fork } = require('child_process')
 const http = require('http')
 const storageIpcClient = require('./ipc/storageClient')  // v1.7.0 解耦：storage IPC 客户端
+const httpBridge = require('./httpBridge')                  // v1.7.x 拆分：HTTP Debug Bridge 模块
+const watcher = require('./watcher')                        // v1.7.x 拆分：文件夹监控模块
+const { registerIpcHandlers } = require('./ipcHandlers')   // v1.7.x 拆分：IPC Handlers 模块
 
 // ===== 版本互斥系统 =====
 // 确保同一时间只有一个版本运行：开机多个版本同时启动时，只保留最高版本
@@ -329,7 +332,17 @@ let _logFlushTimer = null
 const LOG_FLUSH_INTERVAL = 3000
 const LOG_MAX_SIZE = 1024 * 1024 // 1MB
 
+// 日志级别过滤：仅写入优先级 >= MIN_LOG_LEVEL 的日志
+// 通过环境变量 KB_LOG_LEVEL 覆盖（DEBUG/INFO/WARN/ERROR/FATAL），默认 INFO
+const LOG_LEVELS = { DEBUG: 0, INFO: 1, WARN: 2, ERROR: 3, FATAL: 4 }
+const MIN_LOG_LEVEL = (() => {
+  const envLevel = (process.env.KB_LOG_LEVEL || '').toUpperCase()
+  return envLevel in LOG_LEVELS ? LOG_LEVELS[envLevel] : LOG_LEVELS.INFO
+})()
+
 function writeLogToFile(level, ...args) {
+  const levelPriority = LOG_LEVELS[(level || '').toUpperCase()] ?? LOG_LEVELS.INFO
+  if (levelPriority < MIN_LOG_LEVEL) return  // 低于阈值，跳过
   const timestamp = new Date().toISOString()
   const message = args.map(a => {
     if (typeof a === 'object') {
@@ -391,243 +404,14 @@ console.warn = (...args) => {
 // 应用退出时刷盘
 app.on('before-quit', () => flushLogToFile())
 
-// ===== 瓦特（watcher）状态管理（多文件夹支持） =====
-let watcherMap = {}        // { [folderPath]: chokidar instance }
-let watcherStatusMap = {}  // { [folderPath]: { running, fileCount, lastEvent } }
-let pendingStrmFiles = []  // 待处理的 Strm 文件队列（全局共享）
+// 文件夹监控模块已拆分至 ./watcher.js
+// 启动时由 app.whenReady() 中调用 watcher.init() 注入依赖
 
-// 定期清理 pendingStrmFiles，防止内存泄漏
-let pendingStrmCleanupTimer = null
-function startPendingStrmCleanup() {
-  if (pendingStrmCleanupTimer) return
-  pendingStrmCleanupTimer = setInterval(() => {
-    const oldLength = pendingStrmFiles.length
-    // 只保留最近 100 条记录
-    if (pendingStrmFiles.length > 100) {
-      pendingStrmFiles = pendingStrmFiles.slice(-100)
-    }
-    // 清理超过 1 小时的已处理项
-    const oneHourAgo = Date.now() - 3600000
-    const before = pendingStrmFiles.length
-    pendingStrmFiles = pendingStrmFiles.filter(f => 
-      !f.processed || new Date(f.processedAt).getTime() > oneHourAgo
-    )
-    const after = pendingStrmFiles.length
-    if (before !== after || oldLength > 100) {
-      console.log(`[内存清理] pendingStrmFiles: ${oldLength} → ${pendingStrmFiles.length} (已清理 ${before - after} 条)`)
-    }
-  }, 60000) // 每分钟清理一次
-}
+// IPC Handlers 已拆分至 ./ipcHandlers.js（registerIpcHandlers）
+// readStrmFile / resolveStrmPath / isPathAllowed 移至该模块
+// getDirSize / createStrmFile 保留在 main.js（被 watcher 和 ipcHandlers 共同依赖）
 
-function loadWatcherState() {
-  try {
-    if (fs.existsSync(WATCHER_STATE_FILE)) {
-      return JSON.parse(fs.readFileSync(WATCHER_STATE_FILE, 'utf-8'))
-    }
-  } catch (e) { /* ignore */ }
-  return { paths: [], autoStart: false }
-}
-
-function saveWatcherState(state) {
-  try {
-    fs.writeFileSync(WATCHER_STATE_FILE, JSON.stringify(state, null, 2))
-  } catch (e) { /* ignore */ }
-}
-
-/**
- * 获取合并后的监控状态
- */
-function getCombinedWatcherStatus() {
-  const paths = Object.keys(watcherMap)
-  const allPaths = [...new Set([...paths, ...Object.keys(watcherStatusMap)])]
-  let totalFiles = 0
-  const lastEvents = []
-  for (const p of allPaths) {
-    const s = watcherStatusMap[p]
-    if (s) {
-      totalFiles += s.fileCount || 0
-      if (s.lastEvent) lastEvents.push(`${path.basename(p)}: ${s.lastEvent}`)
-    }
-  }
-  return {
-    running: paths.length > 0,
-    paths: allPaths,
-    pathsInfo: allPaths.map(p => ({
-      path: p,
-      ...(watcherStatusMap[p] || { running: false, fileCount: 0, lastEvent: '' })
-    })),
-    fileCount: totalFiles,
-    lastEvent: lastEvents.join('; ') || (paths.length > 0 ? '监控运行中' : '已停止')
-  }
-}
-
-/**
- * 启动监控单个文件夹
- */
-async function startFileWatcher(folderPath) {
-  if (watcherMap[folderPath]) return true
-  if (!folderPath || !fs.existsSync(folderPath)) {
-    watcherStatusMap[folderPath] = { running: false, fileCount: 0, lastEvent: '路径不存在' }
-    return false
-  }
-  try {
-    const chokidar = await import('chokidar')
-    let initialCount = 0
-    try {
-      initialCount = fs.readdirSync(folderPath).filter(f => {
-        return fs.statSync(path.join(folderPath, f)).isFile()
-      }).length
-    } catch (e) { /* ignore */ }
-    const instance = chokidar.default.watch(folderPath, {
-      ignored: /(^|[/\\])\../,
-      persistent: true,
-      ignoreInitial: true,
-      depth: 0,
-      awaitWriteFinish: { stabilityThreshold: 2000, pollInterval: 100 }
-    })
-    watcherMap[folderPath] = instance
-    // 自动检测 Obsidian vault（存在 .obsidian 子目录）
-    const isObsidianVault = fs.existsSync(path.join(folderPath, '.obsidian'))
-    watcherStatusMap[folderPath] = { running: true, fileCount: initialCount, lastEvent: '监控已启动', isObsidianVault }
-
-    instance.on('add', async (filePath) => {
-      const fileName = path.basename(filePath)
-      const status = watcherStatusMap[folderPath]
-      if (status) {
-        status.lastEvent = `新增: ${fileName}`
-        status.fileCount++
-      }
-      // Obsidian vault 中的 .md 笔记直接入队（不需要 .strm 引用）
-      const isObsidianVault = watcherStatusMap[folderPath]?.isObsidianVault
-      if (isObsidianVault && fileName.toLowerCase().endsWith('.md')) {
-        pendingStrmFiles.push({
-          strmFileName: fileName,
-          strmFilePath: filePath,
-          originalFilePath: filePath,
-          isObsidianNote: true,
-          detectedAt: new Date().toISOString()
-        })
-        console.log(`[Obsidian] 笔记已入队: ${fileName}`)
-        if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send('watcher-event', { type: 'add', filePath, fileName, folderPath, isObsidianNote: true, ...getCombinedWatcherStatus() })
-        }
-        return  // 跳过 .strm 创建
-      }
-
-      // 自动创建 .strm 引用
-      let strmFilePath = ''
-      try {
-        const strmResult = createStrmFile(filePath, fileName)
-        if (strmResult.success) {
-          strmFilePath = strmResult.filePath
-          console.log(`[文件夹监控] 已自动创建引用: ${fileName} → ${strmResult.filePath}`)
-        }
-      } catch (e) {
-        console.error(`[文件夹监控] 创建引用失败 ${fileName}:`, e.message)
-      }
-      // 加入待处理队列
-      if (strmFilePath) {
-        const strmFileName = path.basename(strmFilePath)
-        pendingStrmFiles.push({
-          strmFileName, strmFilePath,
-          originalFilePath: filePath,
-          detectedAt: new Date().toISOString()
-        })
-        console.log(`[Strm 待处理] ${strmFileName} 已加入待处理队列`)
-      }
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('watcher-event', {
-          type: 'add', filePath, fileName,
-          folderPath, ...getCombinedWatcherStatus()
-        })
-      }
-    })
-
-    instance.on('unlink', async (filePath) => {
-      const fileName = path.basename(filePath)
-      const status = watcherStatusMap[folderPath]
-      if (status) {
-        status.lastEvent = `删除: ${fileName}`
-        status.fileCount = Math.max(0, (status.fileCount || 0) - 1)
-      }
-      // 删除对应的 .strm 引用
-      try {
-        const strmPath = path.join(UPLOADS_DIR, fileName.endsWith('.strm') ? fileName : fileName + '.strm')
-        if (fs.existsSync(strmPath)) { fs.unlinkSync(strmPath) }
-      } catch (e) { /* ignore */ }
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('watcher-event', {
-          type: 'remove', filePath, fileName,
-          folderPath, ...getCombinedWatcherStatus()
-        })
-      }
-    })
-
-    instance.on('change', (filePath) => {
-      const fileName = path.basename(filePath)
-      const status = watcherStatusMap[folderPath]
-      if (status) status.lastEvent = `修改: ${fileName}`
-      // 更新 .strm 引用
-      try {
-        const strmPath = path.join(UPLOADS_DIR, (fileName.endsWith('.strm') ? fileName : fileName + '.strm'))
-        if (fs.existsSync(strmPath)) { fs.writeFileSync(strmPath, filePath, 'utf-8') }
-      } catch (e) { /* ignore */ }
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('watcher-event', {
-          type: 'change', filePath, fileName,
-          folderPath, ...getCombinedWatcherStatus()
-        })
-      }
-    })
-
-    console.log(`[文件夹监控] 已启动监控: ${folderPath}`)
-    return true
-  } catch (error) {
-    console.error('[文件夹监控] 启动失败:', error)
-    watcherStatusMap[folderPath] = { running: false, fileCount: 0, lastEvent: `启动失败: ${error.message}` }
-    return false
-  }
-}
-
-/**
- * 停止监控单个文件夹
- */
-async function stopFileWatcher(folderPath) {
-  if (watcherMap[folderPath]) {
-    await watcherMap[folderPath].close()
-    delete watcherMap[folderPath]
-  }
-  // 完全清理 watcherStatusMap，避免内存泄漏
-  delete watcherStatusMap[folderPath]
-  console.log(`[文件夹监控] 已停止并清理: ${folderPath}`)
-}
-
-/**
- * 批量启动多个文件夹监控
- */
-async function startAllWatchers(paths) {
-  for (const p of Object.keys(watcherMap)) {
-    await stopFileWatcher(p)
-  }
-  for (const p of paths) {
-    if (p && p.trim()) {
-      await startFileWatcher(p.trim())
-    }
-  }
-  saveWatcherState({ paths: paths.filter(p => p && p.trim()), autoStart: true })
-}
-
-/**
- * 停止所有监控
- */
-async function stopAllWatchers() {
-  for (const p of Object.keys(watcherMap)) {
-    await stopFileWatcher(p)
-  }
-  saveWatcherState({ paths: [], autoStart: false })
-}
-
-// ===== 工具函数 =====
+// ===== 共享工具函数（被多模块共用） =====
 function getDirSize(dirPath) {
   try {
     if (!fs.existsSync(dirPath)) return 0
@@ -642,21 +426,11 @@ function getDirSize(dirPath) {
   } catch (e) { return 0 }
 }
 
-// ===== Strm 引用文件辅助函数 =====
-/**
- * 创建一个 .strm 引用文件
- * .strm 文件是一个纯文本文件，内容为原始文件的绝对路径
- * @param {string} originalFilePath - 原始文件的绝对路径
- * @param {string} strmFileName - .strm 文件名（不含路径）
- * @returns {{ success: boolean, filePath: string, error?: string }}
- */
 function createStrmFile(originalFilePath, strmFileName) {
   try {
-    // 确保文件名以 .strm 结尾
     const safeName = strmFileName.replace(/[<>:"/\\|?*]/g, '_')
     const finalName = safeName.endsWith('.strm') ? safeName : safeName + '.strm'
     const strmFilePath = path.join(UPLOADS_DIR, finalName)
-    // 写入原始文件路径到 .strm 文件
     fs.writeFileSync(strmFilePath, originalFilePath, 'utf-8')
     console.log(`[Strm] 创建引用文件: ${strmFilePath} → ${originalFilePath}`)
     return { success: true, filePath: strmFilePath }
@@ -666,549 +440,6 @@ function createStrmFile(originalFilePath, strmFileName) {
   }
 }
 
-/**
- * 读取 .strm 文件，获取原始文件路径
- * @param {string} strmFilePath - .strm 文件的路径
- * @returns {{ success: boolean, originalPath?: string, error?: string }}
- */
-function readStrmFile(strmFilePath) {
-  try {
-    if (!fs.existsSync(strmFilePath)) {
-      return { success: false, error: '引用文件不存在' }
-    }
-    const originalPath = fs.readFileSync(strmFilePath, 'utf-8').trim()
-    if (!originalPath) {
-      return { success: false, error: '引用文件内容为空' }
-    }
-    return { success: true, originalPath }
-  } catch (e) {
-    return { success: false, error: e.message }
-  }
-}
-
-/**
- * 如果文件路径指向 .strm 文件，解析出原始路径；否则直接返回原路径
- * @param {string} filePath
- * @returns {string} 解析后的实际文件路径
- */
-function resolveStrmPath(filePath) {
-  if (filePath && filePath.toLowerCase().endsWith('.strm')) {
-    const result = readStrmFile(filePath)
-    if (result.success && result.originalPath) {
-      return result.originalPath
-    }
-  }
-  return filePath
-}
-
-// ===== IPC 处理 =====
-function registerIpcHandlers() {
-ipcMain.handle('get-storage-info', () => ({
-  storageDir: STORAGE_DIR,
-  uploadsDir: UPLOADS_DIR,
-  configDir: CONFIG_DIR,
-  totalSize: getDirSize(UPLOADS_DIR)
-}))
-
-ipcMain.handle('open-folder', (_, folderPath) => {
-  if (!folderPath || !fs.existsSync(folderPath)) {
-    return { success: false, error: '文件夹不存在' }
-  }
-  shell.openPath(folderPath)
-})
-
-ipcMain.handle('open-file', (_, filePath) => {
-  // 自动解析 .strm 引用文件
-  const resolvedPath = resolveStrmPath(filePath)
-  // 安全检查：禁止打开可执行文件类型
-  const dangerousExts = ['.exe', '.bat', '.cmd', '.ps1', '.msi', '.com', '.scr', '.vbs', '.js', '.wsf']
-  const ext = path.extname(resolvedPath).toLowerCase()
-  if (dangerousExts.includes(ext)) {
-    return { success: false, error: '安全限制：不允许打开可执行文件' }
-  }
-  if (fs.existsSync(resolvedPath)) {
-    shell.openPath(resolvedPath)
-    return { success: true, filePath: resolvedPath }
-  }
-  return { success: false, error: '文件不存在' }
-})
-
-ipcMain.handle('locate-file', (_, filePath) => {
-  // 自动解析 .strm 引用文件
-  const resolvedPath = resolveStrmPath(filePath)
-  if (!isPathAllowed(resolvedPath)) {
-    return { success: false, error: '无权访问该路径' }
-  }
-  if (fs.existsSync(resolvedPath)) {
-    shell.showItemInFolder(resolvedPath)
-    return { success: true, filePath: resolvedPath }
-  }
-  return { success: false, error: '文件不存在' }
-})
-
-// ===== Strm 引用文件 IPC =====
-ipcMain.handle('save-strm-file', (_, { strmFileName, originalFilePath }) => {
-  return createStrmFile(originalFilePath, strmFileName)
-})
-
-ipcMain.handle('read-strm-file', (_, strmFilePath) => {
-  if (!isPathAllowed(strmFilePath)) {
-    return { success: false, error: '无权访问该路径' }
-  }
-  return readStrmFile(strmFilePath)
-})
-
-ipcMain.handle('delete-strm-file', (_, strmFilePath) => {
-  try {
-    if (!isPathAllowed(strmFilePath)) {
-      return { success: false, error: '无权访问该路径' }
-    }
-    if (fs.existsSync(strmFilePath)) {
-      fs.unlinkSync(strmFilePath)
-      return { success: true }
-    }
-    return { success: false, error: '引用文件不存在' }
-  } catch (e) {
-    return { success: false, error: e.message }
-  }
-})
-
-ipcMain.handle('select-folder', async () => {
-  const result = await dialog.showOpenDialog({
-    properties: ['openDirectory']
-  })
-  if (!result.canceled && result.filePaths.length > 0) {
-    return result.filePaths[0]
-  }
-  return null
-})
-
-ipcMain.handle('save-upload-file', async (_, { fileName, content, isBase64 }) => {
-  try {
-    const safeFileName = fileName.replace(/[<>:"/\\|?*]/g, '_')
-    const filePath = path.join(UPLOADS_DIR, safeFileName)
-    if (isBase64) {
-      fs.writeFileSync(filePath, Buffer.from(content, 'base64'))
-    } else {
-      fs.writeFileSync(filePath, content || '', 'utf-8')
-    }
-    return { success: true, filePath, fileName: safeFileName }
-  } catch (e) {
-    return { success: false, error: e.message }
-  }
-})
-
-// ===== 文件夹监控 IPC（多文件夹支持） =====
-ipcMain.handle('watcher-start', async (_, data) => {
-  try {
-    const paths = Array.isArray(data) ? data : (data && data.paths ? data.paths : (data ? [data] : []))
-    if (paths.length === 0) {
-      return { success: false, error: '请提供要监控的文件夹路径' }
-    }
-    for (const p of paths) {
-      if (p && !fs.existsSync(p)) {
-        return { success: false, error: `路径不存在: ${p}` }
-      }
-    }
-    await startAllWatchers(paths)
-    return { success: true, status: getCombinedWatcherStatus() }
-  } catch (e) {
-    return { success: false, error: e.message }
-  }
-})
-
-ipcMain.handle('watcher-stop', async () => {
-  await stopAllWatchers()
-  return { success: true, status: getCombinedWatcherStatus() }
-})
-
-ipcMain.handle('watcher-add', async (_, folderPath) => {
-  try {
-    if (!folderPath || !fs.existsSync(folderPath)) {
-      return { success: false, error: '路径不存在' }
-    }
-    const ok = await startFileWatcher(folderPath)
-    if (ok) {
-      const savedState = loadWatcherState()
-      const paths = [...new Set([...(savedState.paths || []), folderPath])]
-      saveWatcherState({ paths, autoStart: true })
-    }
-    return { success: ok, status: getCombinedWatcherStatus() }
-  } catch (e) {
-    return { success: false, error: e.message }
-  }
-})
-
-ipcMain.handle('watcher-remove', async (_, folderPath) => {
-  try {
-    await stopFileWatcher(folderPath)
-    const savedState = loadWatcherState()
-    const paths = (savedState.paths || []).filter(p => p !== folderPath)
-    saveWatcherState({ paths, autoStart: paths.length > 0 })
-    return { success: true, status: getCombinedWatcherStatus() }
-  } catch (e) {
-    return { success: false, error: e.message }
-  }
-})
-
-ipcMain.handle('watcher-status', () => getCombinedWatcherStatus())
-
-ipcMain.handle('watcher-files', () => {
-  try {
-    const allPaths = Object.keys(watcherMap)
-    if (allPaths.length === 0) {
-      return { success: false, files: [], error: '未设置监控目录' }
-    }
-    let allFiles = []
-    for (const folderPath of allPaths) {
-      if (!fs.existsSync(folderPath)) continue
-      try {
-        const files = fs.readdirSync(folderPath)
-          .filter(f => fs.statSync(path.join(folderPath, f)).isFile())
-          .map(f => ({
-            name: f,
-            folderPath,
-            size: fs.statSync(path.join(folderPath, f)).size,
-            modifiedAt: fs.statSync(path.join(folderPath, f)).mtime
-          }))
-        allFiles = allFiles.concat(files)
-      } catch (e) { /* ignore */ }
-    }
-    allFiles.sort((a, b) => b.modifiedAt - a.modifiedAt)
-    allFiles = allFiles.slice(0, 50)
-    return { success: true, files: allFiles, total: allFiles.length }
-  } catch (e) {
-    return { success: false, error: e.message }
-  }
-})
-
-ipcMain.handle('watcher-pending-files', () => {
-  const pending = pendingStrmFiles.filter(p => !p.processed)
-  return { success: true, files: pending }
-})
-
-ipcMain.handle('watcher-mark-processed', (_, strmFileName) => {
-  const item = pendingStrmFiles.find(p => p.strmFileName === strmFileName && !p.processed)
-  if (item) {
-    item.processed = true
-    item.processedAt = new Date().toISOString()
-    return { success: true }
-  }
-  return { success: false, error: '未找到待处理项' }
-})
-
-// 路径安全检查：只允许读取存储目录和监控目录下的文件
-function isPathAllowed(filePath) {
-  const resolved = path.resolve(filePath)
-  if (resolved.startsWith(path.resolve(STORAGE_DIR))) return true
-  for (const watchedPath of Object.keys(watcherMap)) {
-    if (resolved.startsWith(path.resolve(watchedPath))) return true
-  }
-  return false
-}
-
-ipcMain.handle('read-raw-file', (_, filePath) => {
-  try {
-    if (!filePath || !fs.existsSync(filePath)) {
-      return { success: false, error: '文件不存在' }
-    }
-    if (!isPathAllowed(filePath)) {
-      return { success: false, error: '无权访问该路径' }
-    }
-    const stat = fs.statSync(filePath)
-    if (!stat.isFile()) {
-      return { success: false, error: '路径不是文件' }
-    }
-    const buffer = fs.readFileSync(filePath)
-    const base64 = buffer.toString('base64')
-    const ext = path.extname(filePath).toLowerCase()
-    return {
-      success: true,
-      content: base64,
-      fileName: path.basename(filePath),
-      fileSize: stat.size,
-      mimeType: ext === '.pdf' ? 'application/pdf' :
-               ext === '.docx' ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' :
-               ext === '.doc' ? 'application/msword' :
-               ext === '.xlsx' ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' :
-               ext === '.xls' ? 'application/vnd.ms-excel' :
-               ext.match(/\.(jpg|jpeg|png|gif|bmp|webp)$/i) ? 'image/' + ext.replace('.', '') :
-               'application/octet-stream'
-    }
-  } catch (e) {
-    return { success: false, error: e.message }
-  }
-})
-
-// ===== 开机自启动 IPC =====
-ipcMain.handle('get-auto-start', () => {
-  // dev 模式下 getLoginItemSettings 不可靠，直接读 Registry
-  if (!app.isPackaged && process.platform === 'win32') {
-    try {
-      const regPath = 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run'
-      const { execSync } = require('child_process')
-      const result = execSync(
-        `powershell -Command "(Get-ItemProperty -Path '${regPath}' -Name 'KnowledgeBaseApp' -ErrorAction SilentlyContinue).KnowledgeBaseApp"`,
-        { encoding: 'utf8', timeout: 5000 }
-      ).trim()
-      const enabled = result.length > 0
-      console.log(`[开机自启] dev模式 Registry读取: enabled=${enabled}`)
-      return { enabled, silentStart: true, devMode: true }
-    } catch {
-      return { enabled: false, silentStart: true, devMode: true }
-    }
-  }
-  const settings = app.getLoginItemSettings()
-  console.log(`[开机自启] 读取状态: openAtLogin=${settings.openAtLogin}, execPath=${process.execPath}`)
-  return { enabled: settings.openAtLogin, silentStart: true }
-})
-
-ipcMain.handle('set-auto-start', async (_, enabled) => {
-  const exePath = process.execPath
-  const isPackaged = app.isPackaged
-  console.log(`[开机自启] 设置请求: enabled=${enabled}, exePath=${exePath}, isPackaged=${isPackaged}`)
-
-  try {
-    // 1. Electron 原生 API（恢复 path 参数，dev 模式下必须）
-    const loginArgs = isPackaged ? ['--hidden'] : [app.getAppPath(), '--hidden']
-    app.setLoginItemSettings({
-      openAtLogin: enabled,
-      path: exePath,
-      args: loginArgs
-    })
-
-    // 2. Windows Registry 兜底 — 用 PowerShell 避免 exec 编码问题
-    if (process.platform === 'win32') {
-      const regPath = 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run'
-      const appName = 'KnowledgeBaseApp'
-
-      // 路径安全校验：拒绝包含 PowerShell 特殊字符的路径
-      const psSpecialChars = /[;|&`$(){}[\]<>!"\n\r]/
-      if (psSpecialChars.test(exePath) || psSpecialChars.test(app.getAppPath())) {
-        console.warn('[开机自启] 路径包含特殊字符，跳过 Registry 写入')
-        const settings = app.getLoginItemSettings()
-        return { success: true, enabled: settings.openAtLogin, requested: enabled }
-      }
-
-      await new Promise((resolve) => {
-        if (enabled) {
-          const data = isPackaged
-            ? `"${exePath}" --hidden`
-            : `"${exePath}" "${app.getAppPath()}" --hidden`
-          // PowerShell 单引号内转义
-          const escapedData = data.replace(/'/g, "''")
-          const ps = `New-ItemProperty -Path '${regPath}' -Name '${appName}' -Value '${escapedData}' -PropertyType String -Force`
-          execFile('powershell', ['-Command', ps], { encoding: 'utf8' }, (err) => {
-            if (err) console.error('[开机自启] Registry 写入失败:', err.message)
-            else console.log('[开机自启] Registry 写入成功')
-            resolve()
-          })
-        } else {
-          const ps = `Remove-ItemProperty -Path '${regPath}' -Name '${appName}' -ErrorAction SilentlyContinue`
-          execFile('powershell', ['-Command', ps], { encoding: 'utf8' }, (err) => {
-            if (err) console.warn('[开机自启] Registry 删除:', err.message)
-            else console.log('[开机自启] Registry 删除成功')
-            resolve()
-          })
-        }
-      })
-    }
-
-    // 3. 验证实际状态（dev 模式下读 Registry，因 getLoginItemSettings 不可靠）
-    if (!isPackaged && process.platform === 'win32') {
-      console.log(`[开机自启] dev模式: 跳过 getLoginItemSettings，返回请求值 enabled=${enabled}`)
-      return { success: true, enabled: enabled, requested: enabled, devMode: true }
-    }
-    const settings = app.getLoginItemSettings()
-    console.log(`[开机自启] 验证: openAtLogin=${settings.openAtLogin}, 请求=${enabled}`)
-    return { success: true, enabled: settings.openAtLogin, requested: enabled }
-  } catch (err) {
-    console.error('[开机自启] 设置失败:', err)
-    return { success: false, enabled: false, error: err.message }
-  }
-})
-
-// ===== 跨模式数据同步 =====
-
-ipcMain.handle('sync-write', async (_, data) => {
-  try {
-    fs.writeFileSync(SYNC_FILE, JSON.stringify(data, null, 2), 'utf-8')
-    return { success: true }
-  } catch (e) {
-    return { success: false, error: e.message }
-  }
-})
-
-ipcMain.handle('sync-read', () => {
-  try {
-    if (fs.existsSync(SYNC_FILE)) {
-      const content = fs.readFileSync(SYNC_FILE, 'utf-8')
-      const data = JSON.parse(content)
-      return { success: true, data }
-    }
-    return { success: true, data: null }
-  } catch (e) {
-    return { success: false, error: e.message }
-  }
-})
-
-ipcMain.handle('sync-timestamp', () => {
-  try {
-    if (fs.existsSync(SYNC_FILE)) {
-      const stat = fs.statSync(SYNC_FILE)
-      return { success: true, timestamp: stat.mtime.toISOString() }
-    }
-    return { success: true, timestamp: null }
-  } catch (e) {
-    return { success: false, error: e.message }
-  }
-})
-
-// ===== 渲染进程日志转发到 app.log =====
-ipcMain.on('renderer-log', (_, entry) => {
-  if (!entry) return
-  const prefix = `[Renderer]`
-  const dataStr = entry.data ? ` | ${entry.data}` : ''
-  writeLogToFile(entry.level || 'INFO', `${prefix} ${entry.message}${dataStr}`)
-})
-
-// ===== 调试接口 IPC（供 Trae / DevTools 调用）=====
-ipcMain.handle('debug-get-status', () => {
-  try {
-    return {
-      success: true,
-      data: {
-        electron: {
-          pid: process.pid,
-          version: app.getVersion(),
-          platform: process.platform,
-          arch: process.arch,
-          nodeVersion: process.version,
-          uptime: Math.round(process.uptime())
-        },
-        analyzer: {
-          ready: analyzerReady,
-          pid: analyzerProcess ? analyzerProcess.pid : null
-        },
-        watcher: getCombinedWatcherStatus(),
-        storage: {
-          storageDir: STORAGE_DIR,
-          uploadsDir: UPLOADS_DIR,
-          totalSize: getDirSize(UPLOADS_DIR)
-        },
-        memory: process.memoryUsage(),
-        timestamp: new Date().toISOString()
-      }
-    }
-  } catch (e) {
-    return { success: false, error: e.message }
-  }
-})
-
-ipcMain.handle('debug-get-logs', (_, lines) => {
-  try {
-    const count = Math.min(parseInt(lines) || 100, 1000)
-    const logFile = path.join(CONFIG_DIR, 'app.log')
-    let logs = []
-    if (fs.existsSync(logFile)) {
-      const content = fs.readFileSync(logFile, 'utf-8')
-      const allLines = content.split('\n').filter(l => l.trim())
-      logs = allLines.slice(-count)
-    }
-    return { success: true, data: { logs, count: logs.length, totalLines: logs.length } }
-  } catch (e) {
-    return { success: false, error: e.message }
-  }
-})
-
-ipcMain.handle('debug-suspend', () => {
-  try {
-    // 挂起分析子进程
-    if (analyzerProcess && analyzerReady) {
-      analyzerProcess.send({ type: 'suspend' })
-      return { success: true, message: '分析子进程已挂起' }
-    }
-    return { success: false, message: '分析子进程未运行' }
-  } catch (e) {
-    return { success: false, error: e.message }
-  }
-})
-
-ipcMain.handle('debug-resume', () => {
-  try {
-    if (analyzerProcess && analyzerReady) {
-      analyzerProcess.send({ type: 'resume' })
-      return { success: true, message: '分析子进程已恢复' }
-    }
-    return { success: false, message: '分析子进程未运行' }
-  } catch (e) {
-    return { success: false, error: e.message }
-  }
-})
-
-ipcMain.handle('debug-manual-analyze', async (_, docId) => {
-  try {
-    if (!analyzerProcess || !analyzerReady) {
-      return { success: false, error: '分析子进程未就绪' }
-    }
-    if (!docId || typeof docId !== 'string') {
-      return { success: false, error: 'docId 必填且为字符串' }
-    }
-    // 从渲染进程读取文档详情，补全 filePath/fileName/fileType/title
-    // v1.7.0 解耦：通过 storage IPC 客户端调用，替代字符串注入
-    let doc = null
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      doc = await storageIpcClient.getDocument(docId)
-    }
-    if (!doc) {
-      return { success: false, error: `文档不存在: ${docId}` }
-    }
-    if (!doc.filePath) {
-      return { success: false, error: `文档无 filePath 字段: ${docId}` }
-    }
-    if (!fs.existsSync(doc.filePath)) {
-      return { success: false, error: `文件不存在: ${doc.filePath}` }
-    }
-    analyzerProcess.send({
-      type: 'analyze',
-      id: docId,
-      filePath: doc.filePath,
-      fileName: doc.fileName || doc.title,
-      fileType: doc.fileType,
-      title: doc.title
-    })
-    return { success: true, message: `已触发分析: ${docId} → ${doc.filePath}` }
-  } catch (e) {
-    return { success: false, error: e.message }
-  }
-})
-
-ipcMain.handle('debug-health-check', async () => {
-  const checks = {
-    electron: { ok: true, info: '运行中' },
-    analyzer: { ok: analyzerReady, info: analyzerReady ? '就绪' : '未就绪' },
-    watcher: { ok: Object.keys(watcherMap).length > 0, info: `${Object.keys(watcherMap).length} 个监控` },
-    ollama: { ok: false, info: '未检测' }
-  }
-  // Ollama 健康检查
-  try {
-    const result = await new Promise((resolve) => {
-      const req = http.get('http://localhost:11434/api/tags', { timeout: 2000 }, (res) => {
-        let data = ''
-        res.on('data', (chunk) => { data += chunk })
-        res.on('end', () => resolve({ ok: res.statusCode === 200, data }))
-      })
-      req.on('error', () => resolve({ ok: false, error: '连接失败' }))
-      req.on('timeout', () => { req.destroy(); resolve({ ok: false, error: '超时' }) })
-    })
-    checks.ollama = { ok: result.ok, info: result.ok ? '运行中' : (result.error || '不可用') }
-  } catch (e) {
-    checks.ollama = { ok: false, info: e.message }
-  }
-  const allOk = Object.values(checks).every(c => c.ok)
-  return { success: true, data: { healthy: allOk, checks, timestamp: new Date().toISOString() } }
-})
-} // end registerIpcHandlers
 
 // ===== 后台分析子进程管理 =====
 let analyzerProcess = null
@@ -1290,232 +521,8 @@ ipcMain.handle('analyzer-status', () => ({
   pid: analyzerProcess?.pid || null
 }))
 
-// ===== HTTP Debug Bridge（供 Trae 等外部工具调用）=====
-const HTTP_BRIDGE_PORT = 7777
-const HTTP_BRIDGE_HOST = '127.0.0.1' // 仅本机访问
-let _httpBridgeServer = null
-
-/**
- * 简易 JSON 响应封装
- */
-function sendJSON(res, status, data) {
-  res.writeHead(status, {
-    'Content-Type': 'application/json; charset=utf-8',
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type'
-  })
-  res.end(JSON.stringify(data, null, 2))
-}
-
-/**
- * 读取请求体
- */
-function readRequestBody(req) {
-  return new Promise((resolve) => {
-    let data = ''
-    req.on('data', (chunk) => { data += chunk })
-    req.on('end', () => {
-      try { resolve(JSON.parse(data)) }
-      catch (e) { resolve({}) }
-    })
-  })
-}
-
-/**
- * 启动 HTTP Bridge
- */
-function startHttpBridge() {
-  if (_httpBridgeServer) return
-  const server = http.createServer(async (req, res) => {
-    const url = new URL(req.url, `http://${req.headers.host}`)
-    const pathname = url.pathname
-
-    // CORS 预检
-    if (req.method === 'OPTIONS') {
-      res.writeHead(204, {
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type'
-      })
-      res.end()
-      return
-    }
-
-    try {
-      // GET /debug/status
-      if (pathname === '/debug/status' && req.method === 'GET') {
-        return sendJSON(res, 200, {
-          success: true,
-          electron: { pid: process.pid, version: app.getVersion(), platform: process.platform, uptime: Math.round(process.uptime()) },
-          analyzer: { ready: analyzerReady, pid: analyzerProcess?.pid || null },
-          watcher: getCombinedWatcherStatus(),
-          storage: { storageDir: STORAGE_DIR, uploadsDir: UPLOADS_DIR, totalSize: getDirSize(UPLOADS_DIR) },
-          memory: process.memoryUsage(),
-          timestamp: new Date().toISOString()
-        })
-      }
-
-      // GET /debug/logs?lines=100
-      if (pathname === '/debug/logs' && req.method === 'GET') {
-        const count = Math.min(parseInt(url.searchParams.get('lines')) || 100, 1000)
-        flushLogToFile()
-        let logs = []
-        if (fs.existsSync(LOG_FILE)) {
-          const content = fs.readFileSync(LOG_FILE, 'utf-8')
-          const allLines = content.split('\n').filter(l => l.trim())
-          logs = allLines.slice(-count)
-        }
-        return sendJSON(res, 200, { success: true, count: logs.length, logs })
-      }
-
-      // GET /debug/health
-      if (pathname === '/debug/health' && req.method === 'GET') {
-        const checks = {
-          electron: { ok: true, info: '运行中' },
-          analyzer: { ok: analyzerReady, info: analyzerReady ? '就绪' : '未就绪' },
-          watcher: { ok: Object.keys(watcherMap).length > 0, info: `${Object.keys(watcherMap).length} 个监控` },
-          ollama: { ok: false, info: '未检测' }
-        }
-        try {
-          const result = await new Promise((resolve) => {
-            const r = http.get('http://localhost:11434/api/tags', { timeout: 2000 }, (rsp) => {
-              let body = ''
-              rsp.on('data', (c) => { body += c })
-              rsp.on('end', () => resolve({ ok: rsp.statusCode === 200, data: body }))
-            })
-            r.on('error', () => resolve({ ok: false }))
-            r.on('timeout', () => { r.destroy(); resolve({ ok: false }) })
-          })
-          checks.ollama = { ok: result.ok, info: result.ok ? '运行中' : '不可用' }
-        } catch (e) { /* ignore */ }
-        return sendJSON(res, 200, { success: true, healthy: Object.values(checks).every(c => c.ok), checks })
-      }
-
-      // POST /debug/suspend
-      if (pathname === '/debug/suspend' && req.method === 'POST') {
-        if (analyzerProcess && analyzerReady) {
-          analyzerProcess.send({ type: 'suspend' })
-          return sendJSON(res, 200, { success: true, message: '分析子进程已挂起' })
-        }
-        return sendJSON(res, 200, { success: false, message: '分析子进程未运行' })
-      }
-
-      // POST /debug/resume
-      if (pathname === '/debug/resume' && req.method === 'POST') {
-        if (analyzerProcess && analyzerReady) {
-          analyzerProcess.send({ type: 'resume' })
-          return sendJSON(res, 200, { success: true, message: '分析子进程已恢复' })
-        }
-        return sendJSON(res, 200, { success: false, message: '分析子进程未运行' })
-      }
-
-      // POST /debug/analyze
-      if (pathname === '/debug/analyze' && req.method === 'POST') {
-        const body = await readRequestBody(req)
-        const { docId } = body
-        if (!docId) return sendJSON(res, 400, { success: false, error: '缺少 docId' })
-        if (!analyzerProcess || !analyzerReady) {
-          return sendJSON(res, 503, { success: false, error: '分析子进程未就绪' })
-        }
-        // 从渲染进程读取文档详情，补全 filePath/fileName/fileType/title
-        // v1.7.0 解耦：通过 storage IPC 客户端调用
-        let doc = null
-        try {
-          if (mainWindow && !mainWindow.isDestroyed()) {
-            doc = await storageIpcClient.getDocument(docId)
-          }
-        } catch (e) { /* ignore */ }
-        if (!doc) return sendJSON(res, 404, { success: false, error: `文档不存在: ${docId}` })
-        if (!doc.filePath) return sendJSON(res, 400, { success: false, error: `文档无 filePath: ${docId}` })
-        if (!fs.existsSync(doc.filePath)) return sendJSON(res, 404, { success: false, error: `文件不存在: ${doc.filePath}` })
-        analyzerProcess.send({
-          type: 'analyze',
-          id: docId,
-          filePath: doc.filePath,
-          fileName: doc.fileName || doc.title,
-          fileType: doc.fileType,
-          title: doc.title
-        })
-        return sendJSON(res, 200, { success: true, message: `已触发分析: ${docId} → ${doc.filePath}` })
-      }
-
-      // POST /debug/ai/chat - 直接测试 AI
-      if (pathname === '/debug/ai/chat' && req.method === 'POST') {
-        const body = await readRequestBody(req)
-        const { prompt } = body
-        if (!prompt) return sendJSON(res, 400, { success: false, error: '缺少 prompt' })
-        try {
-          const result = await new Promise((resolve) => {
-            const r = http.get('http://localhost:11434/api/tags', { timeout: 2000 }, (rsp) => resolve(rsp.statusCode === 200))
-            r.on('error', () => resolve(false))
-            r.on('timeout', () => { r.destroy(); resolve(false) })
-          })
-          return sendJSON(res, 200, { success: true, ollamaReachable: result })
-        } catch (e) {
-          return sendJSON(res, 200, { success: true, ollamaReachable: false, error: e.message })
-        }
-      }
-
-      // GET /debug/docs/pending - 待分析文档
-      if (pathname === '/debug/docs/pending' && req.method === 'GET') {
-        // v1.7.0 解耦：通过 storage IPC 客户端调用，替代字符串注入
-        try {
-          if (mainWindow && !mainWindow.isDestroyed()) {
-            const docs = await storageIpcClient.getDocumentMetadata(100, 0)
-            const pending = (docs || [])
-              .filter(d => !d.aiAnalyzed)
-              .map(d => ({ id: d.id, title: d.title || d.fileName, fileName: d.fileName }))
-            return sendJSON(res, 200, { success: true, count: pending.length, docs: pending })
-          }
-        } catch (e) {
-          return sendJSON(res, 200, { success: false, error: e.message })
-        }
-        return sendJSON(res, 200, { success: false, error: '渲染进程未就绪' })
-      }
-
-      // 404
-      return sendJSON(res, 404, { success: false, error: 'Not Found', availableEndpoints: [
-        'GET  /debug/status',
-        'GET  /debug/logs?lines=N',
-        'GET  /debug/health',
-        'POST /debug/suspend',
-        'POST /debug/resume',
-        'POST /debug/analyze  {docId}',
-        'POST /debug/ai/chat  {prompt}',
-        'GET  /debug/docs/pending'
-      ]})
-    } catch (e) {
-      return sendJSON(res, 500, { success: false, error: e.message })
-    }
-  })
-
-  server.on('error', (err) => {
-    if (err.code === 'EADDRINUSE') {
-      console.warn(`[DebugBridge] 端口 ${HTTP_BRIDGE_PORT} 被占用，尝试下一个端口`)
-      server.listen(HTTP_BRIDGE_PORT + 1, HTTP_BRIDGE_HOST)
-    } else {
-      console.error('[DebugBridge] 启动失败:', err.message)
-    }
-  })
-
-  server.listen(HTTP_BRIDGE_PORT, HTTP_BRIDGE_HOST, () => {
-    console.log(`[DebugBridge] HTTP 服务已启动: http://${HTTP_BRIDGE_HOST}:${HTTP_BRIDGE_PORT}`)
-  })
-
-  _httpBridgeServer = server
-}
-
-/**
- * 停止 HTTP Bridge
- */
-function stopHttpBridge() {
-  if (_httpBridgeServer) {
-    _httpBridgeServer.close()
-    _httpBridgeServer = null
-    console.log('[DebugBridge] HTTP 服务已停止')
-  }
-}
+// HTTP Debug Bridge 模块已拆分至 ./httpBridge.js
+// 启动时由 app.whenReady() 中调用 httpBridge.init() + httpBridge.httpBridge.startHttpBridge()
 
 // ===== 开机静默启动配置 =====
 // 检测是否通过开机自启动（带 --hidden 参数）
@@ -1698,6 +705,48 @@ const _versionSelfCheckPassed = (() => {
 })()
 
 // ===== 应用生命周期 =====
+// v1.7.x 拆分：初始化模块依赖（在 app.whenReady 之前注册，依赖在 ready 后被调用）
+watcher.init({
+  getUploadsDir: () => UPLOADS_DIR,
+  getWatcherStateFile: () => WATCHER_STATE_FILE,
+  getMainWindow: () => mainWindow,
+  createStrmFile  // main.js 内部函数，下方定义
+})
+
+httpBridge.init({
+  getCombinedWatcherStatus: watcher.getCombinedWatcherStatus,
+  getDirSize,
+  getStorageDirs: () => ({ storageDir: STORAGE_DIR, uploadsDir: UPLOADS_DIR }),
+  getLogFile: () => LOG_FILE,
+  getMainWindow: () => mainWindow,
+  getAnalyzer: () => ({ ready: analyzerReady, pid: analyzerProcess?.pid || null }),
+  storageIpcClient,
+  flushLogToFile,
+  analyzerControl: {
+    suspend: () => analyzerProcess && analyzerReady && analyzerProcess.send({ type: 'suspend' }),
+    resume: () => analyzerProcess && analyzerReady && analyzerProcess.send({ type: 'resume' }),
+    analyze: (data) => analyzerProcess && analyzerReady && analyzerProcess.send({ type: 'analyze', ...data })
+  }
+})
+
+// v1.7.x 拆分：注册 IPC Handlers（注入依赖）
+registerIpcHandlers({
+  getStorageDirs: () => ({ storageDir: STORAGE_DIR, uploadsDir: UPLOADS_DIR, configDir: CONFIG_DIR }),
+  getSyncFile: () => SYNC_FILE,
+  getLogFile: () => LOG_FILE,
+  getMainWindow: () => mainWindow,
+  getAnalyzer: () => ({ ready: analyzerReady, pid: analyzerProcess?.pid || null, process: analyzerProcess }),
+  getAnalyzerControl: () => ({
+    suspend: () => analyzerProcess && analyzerReady && analyzerProcess.send({ type: 'suspend' }),
+    resume: () => analyzerProcess && analyzerReady && analyzerProcess.send({ type: 'resume' }),
+    analyze: (data) => analyzerProcess && analyzerReady && analyzerProcess.send({ type: 'analyze', ...data })
+  }),
+  storageIpcClient,
+  watcher,
+  writeLogToFile,
+  createStrmFile
+})
+
 app.whenReady().then(() => {
   // 版本互斥检查未通过则不启动
   if (shouldExitByVersion || !_versionSelfCheckPassed) return
@@ -1708,7 +757,7 @@ app.whenReady().then(() => {
   createTray()
   
   // 启动 pendingStrmFiles 清理定时器（防止内存泄漏）
-  startPendingStrmCleanup()
+  watcher.startPendingStrmCleanup()
   console.log('[应用] pendingStrmFiles 清理定时器已启动')
 
   // 启动后台分析子进程
@@ -1718,20 +767,20 @@ app.whenReady().then(() => {
   startOllamaIfNotRunning()
 
   // 启动 HTTP Debug Bridge（供 Trae 等外部工具调用）
-  startHttpBridge()
+  httpBridge.httpBridge.startHttpBridge()
 
   // 初始化开机自启动设置（保持上次的用户选择）
   const loginSettings = app.getLoginItemSettings()
   console.log(`[开机自启] 当前状态: openAtLogin=${loginSettings.openAtLogin} | execPath=${process.execPath}`)
 
   // 自动启动文件夹监控（多文件夹）
-  const savedState = loadWatcherState()
+  const savedState = watcher.watcher.loadWatcherState()
   const autoStartPaths = savedState.paths || (savedState.path ? [savedState.path] : [])
   if (autoStartPaths.length > 0 && savedState.autoStart) {
     setTimeout(async () => {
       for (const p of autoStartPaths) {
         if (p && fs.existsSync(p)) {
-          await startFileWatcher(p)
+          await watcher.watcher.startFileWatcher(p)
           console.log(`[自动启动] 已监控: ${p}`)
         }
       }
@@ -1752,23 +801,18 @@ app.on('before-quit', async () => {
   forceQuit = true
 
   // 停止 HTTP Debug Bridge
-  stopHttpBridge()
+  httpBridge.stopHttpBridge()
 
   // 停止版本心跳并清理锁文件
   stopVersionHeartbeat()
   cleanupVersionLock()
 
-  await stopAllWatchers()
+  await watcher.stopAllWatchers()
   
-  // 清理 pendingStrmFiles 定时器
-  if (pendingStrmCleanupTimer) {
-    clearInterval(pendingStrmCleanupTimer)
-    pendingStrmCleanupTimer = null
-    console.log('[应用] pendingStrmFiles 清理定时器已停止')
-  }
-  
+  // 清理 pendingStrmFiles 定时器（v1.7.x 拆分至 watcher 模块）
+  watcher.stopPendingStrmCleanup()
   // 清空 pendingStrmFiles 数组
-  pendingStrmFiles = []
+  watcher.clearPendingStrmFiles()
 
   // 停止分析子进程
   stopAnalyzer()
