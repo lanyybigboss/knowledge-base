@@ -45,3 +45,10 @@ obsidian-vault-repo/
 # Agent 配置
 .codex/
 AGENTS.md
+
+# Agency Agents (已移至 E:\ccswith\agency-agents)
+agency-agents/
+
+# 临时脚本
+create_ppt.py
+open_ppt_cloud.py
